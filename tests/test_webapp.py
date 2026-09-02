@@ -247,7 +247,8 @@ def test_models_endpoint_lists_registered_models():
     with app.test_client() as client:
         payload = client.get("/api/models").get_json()
     ids = [m["id"] for m in payload["models"]]
-    assert ids == ["nelson-siegel", "svensson"]
+    assert ids[:2] == ["nelson-siegel", "svensson"]  # parametric family first
+    assert set(ids) >= {"vasicek", "cir"}
     svensson = payload["models"][1]
     assert svensson["min_points"] == 6
     assert [f["label"] for f in svensson["factors"]] == [
@@ -384,3 +385,16 @@ def test_forecast_and_backtest_accept_model():
     assert len(j["series"]["Curvature2"]) == 4 and len(j["series_std"]["Curvature2"]) == 4
     assert bt.status_code == 200, bt.get_json()
     assert "Curvature2" in bt.get_json()["rows"][0]["factor_rmse_bps"]
+
+
+def test_index_serves_all_studio_tabs_and_modules():
+    """The shell includes every tab partial and the modular scripts."""
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        html = client.get("/").get_data(as_text=True)
+    for tab in ("fitter", "explorer", "historical", "compare", "shortrate", "termpremium", "analytics", "learn"):
+        assert f'data-tab-pane="{tab}"' in html, tab
+    for script in ("core.js", "fitter.js", "lab.js", "historical.js", "compare.js", "shortrate.js", "termpremium.js", "analytics.js", "main.js"):
+        assert f"js/{script}" in html, script
+    assert "Fixed Income Studio" in html and "v2." in html
+    assert 'id="btn-theme"' in html and 'id="synthetic-banner"' in html

@@ -1,451 +1,54 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nelson-Siegel Studio &mdash; Yield Curve Lab</title>
+  <title>Fixed Income Studio &mdash; Yield Curves, Short Rates &amp; Term Premia</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236aa9ff'/%3E%3Cpath d='M10 44 C 22 10, 34 12, 54 26' stroke='white' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem("fi-studio-theme") || "dark"; } catch (e) {}
+  </script>
   <script src="{{ plotly_src }}" charset="utf-8"></script>
 </head>
-<body data-fred-key="{{ 'true' if fred_key_present else 'false' }}">
+<body data-fred-key="{{ 'true' if fred_key_present else 'false' }}" data-synthetic="unknown">
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">NS</div>
-        <div>
-          <h1>Nelson-Siegel</h1>
-          <p>Yield Curve Studio</p>
-        </div>
-      </div>
-
-      <nav class="nav" aria-label="Sections">
-        <button class="nav-item active" data-tab="fitter" title="Alt+1">
-          <span class="nav-icon">&#9684;</span> Curve Fitter
-        </button>
-        <button class="nav-item" data-tab="explorer" title="Alt+2">
-          <span class="nav-icon">&#9881;</span> Parameter Lab
-        </button>
-        <button class="nav-item" data-tab="historical" title="Alt+3">
-          <span class="nav-icon">&#9696;</span> Historical Factors
-        </button>
-        <button class="nav-item" data-tab="compare" title="Alt+4">
-          <span class="nav-icon">&#10696;</span> Treasury vs TIPS
-        </button>
-        <button class="nav-item" data-tab="learn" title="Alt+5">
-          <span class="nav-icon">&#9432;</span> Learn the Model
-        </button>
-      </nav>
-
-      <div class="status-card" id="data-status">
-        <div class="status-dot"></div>
-        <div>
-          <div class="status-label">Data source</div>
-          <div class="status-value" id="data-source-text">Detecting&hellip;</div>
-        </div>
-      </div>
-
-      <form class="api-key-card" id="fred-key-form">
-        <label for="fred-api-key">
-          <span class="status-label">FRED API key</span>
-          <span class="api-key-copy">Use live Treasury and TIPS data.</span>
-        </label>
-        <div class="api-key-row">
-          <input
-            class="input"
-            id="fred-api-key"
-            type="password"
-            placeholder="Paste your FRED API key"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button class="btn small primary" type="submit">Apply</button>
-        </div>
-        <p class="api-key-note" id="fred-key-note">Stored only for this running app session.</p>
-      </form>
-
-      <div class="footer-mini">
-        <span>v1.2 &middot; MIT License</span>
-        <a href="https://github.com/alanvaa06/nelson-siegel" target="_blank" rel="noreferrer">GitHub</a>
-      </div>
-    </aside>
+    {% include "partials/sidebar.html" %}
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <main class="main">
-      <!-- =========================== CURVE FITTER ============================ -->
-      <section class="tab-pane active" data-tab-pane="fitter">
-        <header class="page-head">
-          <div>
-            <h2>Curve Fitter</h2>
-            <p class="muted">Drop in market quotes and watch the model fit a smooth yield curve. Choose the bond type and the model family.</p>
-          </div>
-          <div class="page-actions">
-            <div class="segmented" role="group" aria-label="Bond type">
-              <button class="seg-btn active" data-bond="treasury" aria-pressed="true">Treasury</button>
-              <button class="seg-btn" data-bond="tips" aria-pressed="false">TIPS</button>
-            </div>
-            <div class="segmented" role="group" aria-label="Model" id="fit-model-switch">
-              <button class="seg-btn active" data-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
-              <button class="seg-btn" data-model="svensson" aria-pressed="false">Svensson</button>
-            </div>
-            <button class="btn ghost" id="btn-load-snapshot">Load latest snapshot</button>
-          </div>
-        </header>
-
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-head">
-              <h3>Market quotes</h3>
-              <div class="card-tools">
-                <button class="btn small" id="btn-add-row">+ Add row</button>
-                <button class="btn small" id="btn-paste-toggle" aria-expanded="false">Paste</button>
-                <button class="btn small ghost" id="btn-reset-rows">Reset</button>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="paste-panel" id="paste-panel" hidden>
-                <label for="paste-text" class="muted">One quote per line: <code>maturity yield</code>. Suffixes like <code>3M</code>, <code>2Y</code> and a trailing <code>%</code> are fine.</label>
-                <textarea id="paste-text" class="input" rows="6" placeholder="3M 4.95&#10;2Y 4.30&#10;10Y 4.05&#10;30Y 4.35" spellcheck="false"></textarea>
-                <div class="row gap">
-                  <button class="btn small primary" id="btn-paste-apply">Use these quotes</button>
-                  <button class="btn small ghost" id="btn-paste-cancel">Cancel</button>
-                  <span class="hint" id="paste-error"></span>
-                </div>
-              </div>
-              <table class="quote-table" id="quote-table">
-                <thead>
-                  <tr>
-                    <th>Maturity (yrs)</th>
-                    <th>Yield (%)</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="quote-tbody"></tbody>
-              </table>
-              <div class="row gap wrap">
-                <button class="btn primary" id="btn-fit">Fit curve</button>
-                <span class="hint" id="fit-error"></span>
-                <span class="muted tip">Press <kbd>Enter</kbd> in any cell to fit.</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head">
-              <h3>Fitted curve</h3>
-              <div class="badges" id="fit-badges">
-                <span class="badge" id="fit-rmse">&mdash;</span>
-              </div>
-            </div>
-            <div class="card-body">
-              <div id="chart-fit" class="chart"></div>
-            </div>
-          </div>
+      <div class="topbar">
+        <button class="btn small ghost" id="btn-menu" aria-label="Open navigation">&#9776; Menu</button>
+        <div class="banner" id="synthetic-banner" hidden>
+          <span class="dot"></span>
+          Showing <b>synthetic demo data</b>: no live source answered. Paste a FRED key or allow access to treasury.gov / fred.stlouisfed.org for live curves.
         </div>
+      </div>
 
-        <div class="grid grid-4" id="fit-metrics" aria-live="polite"></div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>Residuals (observed &minus; fitted)</h3>
-            <div class="card-tools">
-              <span class="muted">Negative &rarr; cheap, positive &rarr; expensive vs the model.</span>
-              <button class="btn small ghost" id="btn-fit-export" disabled>Export CSV</button>
-            </div>
-          </div>
-          <div class="card-body">
-            <div id="chart-residuals" class="chart small"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ========================== PARAMETER LAB ============================ -->
-      <section class="tab-pane" data-tab-pane="explorer">
-        <header class="page-head">
-          <div>
-            <h2>Parameter Lab</h2>
-            <p class="muted">Move the sliders and watch each factor reshape the curve. Everything here is computed in your browser.</p>
-          </div>
-          <div class="page-actions">
-            <div class="segmented" role="group" aria-label="Model" id="lab-model-switch">
-              <button class="seg-btn active" data-lab-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
-              <button class="seg-btn" data-lab-model="svensson" aria-pressed="false">Svensson</button>
-            </div>
-            <button class="btn ghost" data-preset="normal">Normal</button>
-            <button class="btn ghost" data-preset="inverted">Inverted</button>
-            <button class="btn ghost" data-preset="humped">Humped</button>
-            <button class="btn ghost" data-preset="flat">Flat</button>
-          </div>
-        </header>
-
-        <div class="grid grid-2-1">
-          <div class="card">
-            <div class="card-head">
-              <h3>Live curve</h3>
-              <label class="toggle"><input type="checkbox" id="lab-show-forward" /> Show forward curve</label>
-            </div>
-            <div class="card-body">
-              <div id="chart-explorer" class="chart"></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h3>Controls</h3><button class="btn small ghost" id="btn-lab-from-fit" title="Copy the last fitted parameters into the sliders">Use last fit</button></div>
-            <div class="card-body sliders">
-              <label>
-                <div class="row between"><span>&beta;<sub>0</sub> &middot; Level (%)</span><span class="mono" id="lbl-b0">3.50</span></div>
-                <input type="range" id="sl-b0" min="-2" max="12" step="0.05" value="3.5" />
-              </label>
-              <label>
-                <div class="row between"><span>&beta;<sub>1</sub> &middot; Slope (%)</span><span class="mono" id="lbl-b1">-1.50</span></div>
-                <input type="range" id="sl-b1" min="-6" max="6" step="0.05" value="-1.5" />
-              </label>
-              <label>
-                <div class="row between"><span>&beta;<sub>2</sub> &middot; Curvature (%)</span><span class="mono" id="lbl-b2">0.00</span></div>
-                <input type="range" id="sl-b2" min="-8" max="8" step="0.05" value="0" />
-              </label>
-              <label>
-                <div class="row between"><span>&tau; &middot; Decay (yrs)</span><span class="mono" id="lbl-tau">2.00</span></div>
-                <input type="range" id="sl-tau" min="0.1" max="10" step="0.05" value="2" />
-              </label>
-              <div id="svensson-sliders" class="sliders" hidden>
-                <label>
-                  <div class="row between"><span>&beta;<sub>3</sub> &middot; Curvature 2 (%)</span><span class="mono" id="lbl-b3">0.00</span></div>
-                  <input type="range" id="sl-b3" min="-8" max="8" step="0.05" value="0" />
-                </label>
-                <label>
-                  <div class="row between"><span>&tau;<sub>2</sub> &middot; Decay 2 (yrs)</span><span class="mono" id="lbl-tau2">8.00</span></div>
-                  <input type="range" id="sl-tau2" min="0.1" max="20" step="0.05" value="8" />
-                </label>
-              </div>
-
-              <div class="formula" id="lab-formula">
-                <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;f<sub>1</sub>(t,&tau;) + &beta;<sub>2</sub>&middot;f<sub>2</sub>(t,&tau;)</code>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ========================= HISTORICAL FACTORS ======================== -->
-      <section class="tab-pane" data-tab-pane="historical">
-        <header class="page-head">
-          <div>
-            <h2>Historical Factors</h2>
-            <p class="muted">Factor histories (daily up to one year, weekly beyond) with the decay(s) estimated once on the whole panel. Track regime shifts in level, slope, and curvature; switch to Svensson for a second hump.</p>
-          </div>
-          <div class="page-actions">
-            <div class="segmented" role="group" aria-label="Bond type">
-              <button class="seg-btn active" data-hist-bond="treasury" aria-pressed="true">Treasury</button>
-              <button class="seg-btn" data-hist-bond="tips" aria-pressed="false">TIPS</button>
-            </div>
-            <div class="segmented" role="group" aria-label="Model" id="hist-model-switch">
-              <button class="seg-btn active" data-hist-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
-              <button class="seg-btn" data-hist-model="svensson" aria-pressed="false" title="Needs at least 6 tenors per date">Svensson</button>
-            </div>
-            <div class="chips" role="group" aria-label="Quick range" id="hist-chips">
-              <button class="chip" data-hist-range="1">1Y</button>
-              <button class="chip" data-hist-range="3">3Y</button>
-              <button class="chip" data-hist-range="5">5Y</button>
-              <button class="chip" data-hist-range="10">10Y</button>
-            </div>
-            <input type="date" id="hist-start" class="input" aria-label="Start date" />
-            <input type="date" id="hist-end" class="input" aria-label="End date" />
-            <button class="btn primary" id="btn-hist-run">Run</button>
-          </div>
-        </header>
-
-        <div class="grid grid-5">
-          <div class="metric"><span class="metric-label">Mean Level</span><span class="metric-value" id="h-level">&mdash;</span></div>
-          <div class="metric"><span class="metric-label">Mean Slope</span><span class="metric-value" id="h-slope">&mdash;</span></div>
-          <div class="metric"><span class="metric-label" id="h-tau-label"><span class="sym">&tau;</span> (panel)</span><span class="metric-value" id="h-tau">&mdash;</span><span class="metric-hint">One decay set for the whole sample</span></div>
-          <div class="metric"><span class="metric-label">Mean fit RMSE</span><span class="metric-value" id="h-rmse">&mdash;</span><span class="metric-hint">Lower is a tighter fit</span></div>
-          <div class="metric"><span class="metric-label">Observations</span><span class="metric-value" id="h-obs">&mdash;</span></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>Factor evolution</h3>
-            <div class="card-tools">
-              <span class="muted" id="hist-range">&mdash;</span>
-              <button class="btn small ghost" id="btn-hist-export" disabled>Export CSV</button>
-            </div>
-          </div>
-          <div class="card-body">
-            <div id="chart-historical" class="chart tall"></div>
-          </div>
-        </div>
-
-        <div class="card" id="forecast-card">
-          <div class="card-head">
-            <h3>Forecast (Diebold-Li dynamics)</h3>
-            <div class="card-tools">
-              <div class="segmented" role="group" aria-label="Forecast method" id="fc-method-switch">
-                <button class="seg-btn" data-fc-method="rw" aria-pressed="false" title="No change from the last observation">Random walk</button>
-                <button class="seg-btn active" data-fc-method="ar" aria-pressed="true" title="AR(1) per factor (Diebold-Li)">AR(1)</button>
-                <button class="seg-btn" data-fc-method="var" aria-pressed="false" title="VAR(1) on all factors">VAR(1)</button>
-              </div>
-              <div class="chips" role="group" aria-label="Horizon" id="fc-chips">
-                <button class="chip" data-fc-horizon="4">4</button>
-                <button class="chip active" data-fc-horizon="12">12</button>
-                <button class="chip" data-fc-horizon="26">26</button>
-                <button class="chip" data-fc-horizon="52">52</button>
-              </div>
-              <span class="muted">steps</span>
-              <button class="btn small primary" id="btn-fc-run" disabled title="Run the historical factors first">Forecast</button>
-              <button class="btn small ghost" id="btn-bt-run" disabled title="Rolling-origin RMSE vs random walk">Backtest</button>
-            </div>
-          </div>
-          <div class="card-body">
-            <p class="muted" id="fc-empty">Run the historical factors above, then forecast: the factors are modelled as AR(1) / VAR(1) processes and mapped back to a curve through the same loadings. One step is one observation of the history (daily up to a year, weekly beyond).</p>
-            <div id="fc-results" hidden>
-              <div class="grid grid-4" id="fc-metrics"></div>
-              <div class="grid grid-2">
-                <div>
-                  <h4 class="subhead">Factor paths with 90% bands</h4>
-                  <div id="chart-forecast-factors" class="chart"></div>
-                </div>
-                <div>
-                  <h4 class="subhead">Current vs forecast curve</h4>
-                  <div id="chart-forecast-curve" class="chart"></div>
-                </div>
-              </div>
-            </div>
-            <div id="bt-results" hidden>
-              <h4 class="subhead">Out-of-sample RMSE (bps), expanding window <span class="muted" id="bt-note"></span></h4>
-              <div class="table-wrap"><table class="data-table" id="bt-table"></table></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>Fit quality per date</h3>
-            <span class="muted">RMSE of the fitted curve in basis points. Spikes flag days the three-factor shape could not capture.</span>
-          </div>
-          <div class="card-body">
-            <div id="chart-hist-rmse" class="chart small"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================ COMPARE TAB ============================ -->
-      <section class="tab-pane" data-tab-pane="compare">
-        <header class="page-head">
-          <div>
-            <h2>Treasury vs TIPS</h2>
-            <p class="muted">Compare nominal and real curves. The level differential implies breakeven inflation expectations.</p>
-          </div>
-          <div class="page-actions">
-            <div class="chips" role="group" aria-label="Quick range" id="cmp-chips">
-              <button class="chip" data-cmp-range="1">1Y</button>
-              <button class="chip" data-cmp-range="3">3Y</button>
-              <button class="chip" data-cmp-range="5">5Y</button>
-              <button class="chip" data-cmp-range="10">10Y</button>
-            </div>
-            <input type="date" id="cmp-start" class="input" aria-label="Start date" />
-            <input type="date" id="cmp-end" class="input" aria-label="End date" />
-            <button class="btn primary" id="btn-cmp-run">Run comparison</button>
-            <span class="muted" id="cmp-status"></span>
-          </div>
-        </header>
-
-        <div class="grid grid-4">
-          <div class="metric"><span class="metric-label">Level corr.</span><span class="metric-value" id="c-corr-level">&mdash;</span></div>
-          <div class="metric"><span class="metric-label">Slope corr.</span><span class="metric-value" id="c-corr-slope">&mdash;</span></div>
-          <div class="metric"><span class="metric-label">Curvature corr.</span><span class="metric-value" id="c-corr-curv">&mdash;</span></div>
-          <div class="metric"><span class="metric-label">Common dates</span><span class="metric-value" id="c-obs">&mdash;</span></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>Levels &amp; breakeven inflation</h3>
-            <button class="btn small ghost" id="btn-cmp-export" disabled>Export CSV</button>
-          </div>
-          <div class="card-body">
-            <div id="chart-compare" class="chart tall"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================== LEARN TAB ============================ -->
-      <section class="tab-pane" data-tab-pane="learn">
-        <header class="page-head">
-          <div>
-            <h2>Learn the Nelson-Siegel Model</h2>
-            <p class="muted">A short tour of the math, the factors, and how to read the curve.</p>
-          </div>
-        </header>
-
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-head"><h3>The equation</h3></div>
-            <div class="card-body learn">
-              <p>The Nelson-Siegel functional form expresses the yield <code>y</code> at maturity <code>t</code> (years) with a decay parameter <code>&tau;</code>:</p>
-              <div class="formula big">
-                <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] + &beta;<sub>2</sub>&middot;{[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] - e<sup>-t/&tau;</sup>}</code>
-              </div>
-              <p>Three economic factors plus a decay parameter capture nearly any plausible curve shape with only four numbers. The <b>Svensson</b> extension adds a second hump, <code>&beta;<sub>3</sub>&middot;f<sub>2</sub>(t,&tau;<sub>2</sub>)</code>, for curves with two bulges; it needs at least six quotes.</p>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h3>Reading the factors</h3></div>
-            <div class="card-body learn">
-              <ul class="checklist">
-                <li><b>&beta;<sub>0</sub> &middot; Level</b> - long-run yield. Parallel shifts of the entire curve.</li>
-                <li><b>&beta;<sub>1</sub> &middot; Slope</b> - short minus long (<code>y(0) = &beta;<sub>0</sub> + &beta;<sub>1</sub></code>). Negative when the curve slopes upward, positive when inverted.</li>
-                <li><b>&beta;<sub>2</sub> &middot; Curvature</b> - mid-curve hump. Positive = belly above the line through the ends.</li>
-                <li><b>&tau; &middot; Decay</b> - where the hump sits: curvature peaks near <code>1.8&middot;&tau;</code> years. The fitter only searches &tau; values whose hump falls inside your quoted maturities; a "&tau; at search bound" badge means the data barely pins it down.</li>
-              </ul>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h3>How the fit works</h3></div>
-            <div class="card-body learn">
-              <ol class="steps">
-                <li>For each candidate &tau; on a fine grid, the betas are solved exactly by least squares (the model is linear once &tau; is fixed).</li>
-                <li>The best candidates are refined with a bounded search; the lowest error wins. No initial guess, fully deterministic.</li>
-                <li><b>RMSE</b> (in basis points) and <b>R&sup2;</b> summarise the fit. The dotted <b>forward curve</b> is <code>d[t&middot;y(t)]/dt</code>, the market's implied path of short rates.</li>
-                <li>Historical factors reuse one &tau; per bond type, estimated on the whole sample (the Diebold-Li convention), so the factor series are comparable across dates.</li>
-              </ol>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h3>Curve shapes &amp; signals</h3></div>
-            <div class="card-body learn">
-              <div class="grid grid-2 tight">
-                <div><b>Normal</b><p class="muted">Upward-sloping. Growth-positive regime.</p></div>
-                <div><b>Inverted</b><p class="muted">Long &lt; short. Classic recession signal.</p></div>
-                <div><b>Humped</b><p class="muted">Mid-tenor peak. Mid-cycle uncertainty.</p></div>
-                <div><b>Flat</b><p class="muted">Tight term premium. Late-cycle.</p></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h3>How to use this app</h3></div>
-            <div class="card-body learn">
-              <ol class="steps">
-                <li>Open <b>Curve Fitter</b>, paste market quotes (or click <i>Load latest snapshot</i>).</li>
-                <li>Hit <b>Fit curve</b>. Read off level/slope/curvature/decay and the residuals.</li>
-                <li>Switch to <b>Parameter Lab</b> and press <i>Use last fit</i> to see how each factor reshapes the curve.</li>
-                <li>Use <b>Historical Factors</b> for time series and <b>Treasury vs TIPS</b> for breakevens. Quick-range chips set the dates; every chart exports to CSV.</li>
-                <li>Keyboard: <kbd>Alt</kbd>+<kbd>1</kbd>&hellip;<kbd>5</kbd> switch tabs.</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      </section>
+      {% include "partials/fitter.html" %}
+      {% include "partials/lab.html" %}
+      {% include "partials/historical.html" %}
+      {% include "partials/compare.html" %}
+      {% include "partials/shortrate.html" %}
+      {% include "partials/termpremium.html" %}
+      {% include "partials/analytics.html" %}
+      {% include "partials/learn.html" %}
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/fitter.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/lab.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/historical.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/compare.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/shortrate.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/termpremium.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

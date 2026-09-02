@@ -1,0 +1,82 @@
+<!-- =========================== CURVE FITTER ============================ -->
+<section class="tab-pane active" data-tab-pane="fitter">
+  <header class="page-head">
+    <div>
+      <h2>Curve Fitter</h2>
+      <p class="muted">Drop in market quotes and fit a smooth curve. Four models on one seam: Nelson-Siegel, Svensson, and the Vasicek and CIR short-rate models.</p>
+    </div>
+    <div class="page-actions">
+      <div class="segmented" role="group" aria-label="Bond type">
+        <button class="seg-btn active" data-bond="treasury" aria-pressed="true">Treasury</button>
+        <button class="seg-btn" data-bond="tips" aria-pressed="false">TIPS</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Model" id="fit-model-switch">
+        <button class="seg-btn active" data-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+        <button class="seg-btn" data-model="svensson" aria-pressed="false" title="Needs at least 6 quotes">Svensson</button>
+        <button class="seg-btn" data-model="vasicek" aria-pressed="false" title="One-factor Gaussian short-rate model">Vasicek</button>
+        <button class="seg-btn" data-model="cir" aria-pressed="false" title="Square-root short-rate model (positive rates)">CIR</button>
+      </div>
+      <button class="btn ghost" id="btn-load-snapshot">Load latest curve</button>
+    </div>
+  </header>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head">
+        <h3>Market quotes</h3>
+        <div class="card-tools">
+          <button class="btn small" id="btn-add-row">+ Add row</button>
+          <button class="btn small" id="btn-paste-toggle" aria-expanded="false">Paste</button>
+          <button class="btn small ghost" id="btn-reset-rows">Reset</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="paste-panel" id="paste-panel" hidden>
+          <label for="paste-text" class="muted">One quote per line: <code>maturity yield</code>. Suffixes like <code>3M</code>, <code>2Y</code> and a trailing <code>%</code> are fine.</label>
+          <textarea id="paste-text" class="input" rows="6" placeholder="3M 4.95&#10;2Y 4.30&#10;10Y 4.05&#10;30Y 4.35" spellcheck="false"></textarea>
+          <div class="row gap">
+            <button class="btn small primary" id="btn-paste-apply">Use these quotes</button>
+            <button class="btn small ghost" id="btn-paste-cancel">Cancel</button>
+            <span class="hint" id="paste-error"></span>
+          </div>
+        </div>
+        <table class="quote-table" id="quote-table">
+          <thead><tr><th>Maturity (yrs)</th><th>Yield (%)</th><th></th></tr></thead>
+          <tbody id="quote-tbody"></tbody>
+        </table>
+        <div class="row gap wrap">
+          <button class="btn primary" id="btn-fit">Fit curve</button>
+          <button class="btn ghost" id="btn-fit-to-lab" title="Open the Parameter Lab with these parameters">Open in Lab &rarr;</button>
+          <span class="hint" id="fit-error"></span>
+          <span class="muted tip">Press <kbd>Enter</kbd> in any cell to fit.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Fitted curve</h3>
+        <div class="badges" id="fit-badges"><span class="badge">&mdash;</span></div>
+      </div>
+      <div class="card-body">
+        <div id="chart-fit" class="chart"></div>
+        <p class="muted note" id="fit-family-note"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-4" id="fit-metrics" aria-live="polite"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>Residuals (observed &minus; fitted)</h3>
+      <div class="card-tools">
+        <span class="muted">Negative &rarr; rich (yield below the curve), positive &rarr; cheap.</span>
+        <button class="btn small ghost" id="btn-fit-export" disabled>Export CSV</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="chart-residuals" class="chart small"></div>
+    </div>
+  </div>
+</section>

@@ -19,6 +19,17 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar
 
+from .analytics import (
+    SPREAD_DEFINITIONS,
+    Bond,
+    bond_report,
+    carry_roll_down,
+    curve_changes,
+    curve_spreads,
+    forward_rate_table,
+    pca_yield_changes,
+    rich_cheap,
+)
 from .data import DataManager
 from .dynamic import DynamicNelsonSiegel, backtest
 from .model import (
@@ -27,6 +38,17 @@ from .model import (
     TreasuryNelsonSiegelModel,
     get_model_class,
     make_model,
+)
+from .registry import make_any_model
+from .short_rate import ShortRateModel, estimate_short_rate, get_short_rate_model_class
+from .term_premium import (
+    ACMTermPremiumModel,
+    campbell_shiller,
+    dns_term_premium,
+    fama_bliss,
+    short_rate_term_premium,
+    to_monthly,
+    zero_panel_from_factors,
 )
 
 _DEFAULT_TAU = {"treasury": 1.37, "tips": 2.0}
@@ -83,7 +105,7 @@ class YieldCurveAnalyzer:
     High-level analyzer for yield curve data and Nelson-Siegel factors.
     """
 
-    def __init__(self, fred_api_key: Optional[str] = None):
+    def __init__(self, fred_api_key: Optional[str] = None, *, public_sources: Optional[bool] = None):
         """
         Initialize the yield curve analyzer.
 
@@ -91,8 +113,11 @@ class YieldCurveAnalyzer:
         -----------
         fred_api_key : str, optional
             FRED API key for data access
+        public_sources : bool, optional
+            Use key-less public feeds (treasury.gov, FRED CSV, Fed GSW) when no
+            key is set; defaults to the environment setting.
         """
-        self.data_manager = DataManager(fred_api_key)
+        self.data_manager = DataManager(fred_api_key, public_sources=public_sources)
         self.treasury_model = TreasuryNelsonSiegelModel()
         self.tips_model = TIPSNelsonSiegelModel()
         self._global_tau: Dict[str, float] = {}
@@ -671,3 +696,322 @@ class YieldCurveAnalyzer:
             "factors": factors,
             "summary_stats": summary_stats,
         }
+
+    # ------------------------------------------------------------------ #
+    # Short-rate models
+    # ------------------------------------------------------------------ #
+    SHORT_RATE_PROXIES = ("policy", "1m", "3m", "6m", "1y")
+
+    def short_rate_proxy(
+        self,
+        proxy: str = "policy",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        frequency: str = "W-FRI",
+    ) -> pd.Series:
+        """History of a short-rate proxy (decimal), sampled at ``frequency``.
+
+        ``policy`` is the effective fed funds rate; ``1m``, ``3m``, ``6m``
+        and ``1y`` are the corresponding Treasury bill/note yields.
+        """
+        key = proxy.lower()
+        if key == "policy":
+            series = self.data_manager.get_policy_rate(start_date, end_date)
+        elif key in {"1m", "3m", "6m", "1y"}:
+            tenor = {"1m": 1 / 12, "3m": 0.25, "6m": 0.5, "1y": 1.0}[key]
+            data = self.data_manager.get_treasury_data(start_date, end_date)
+            col = min(data.columns, key=lambda c: abs(float(c) - tenor))
+            series = data[col]
+        else:
+            raise ValueError(f"proxy must be one of {self.SHORT_RATE_PROXIES}")
+        series = series.dropna()
+        if frequency:
+            series = series.resample(frequency).last().dropna()
+        return series.rename(key)
+
+    def short_rate_analysis(
+        self,
+        bond_type: str = "treasury",
+        model: str = "vasicek",
+        method: str = "ols",
+        proxy: str = "policy",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        horizon_years: float = 5.0,
+        n_paths: int = 200,
+        curve_date: Optional[str] = None,
+    ) -> Dict:
+        """End-to-end short-rate study: physical estimate, cross-section calibration, simulation.
+
+        Returns the time-series estimate (``estimate``), the model calibrated
+        to the latest curve with the estimated volatility (``calibrated``),
+        the physical model (``physical``), the proxy ``history``, simulated
+        path ``quantiles``, expected short-rate paths under both measures, the
+        observed and model-implied curves and a term premium table.
+        """
+        cls = get_short_rate_model_class(model)
+        history = self.short_rate_proxy(proxy, start_date, end_date)
+        if cls.requires_positive_rates:
+            history = history.clip(lower=1e-4)
+        estimate = estimate_short_rate(history, cls.model_id, method)
+
+        data = self._get_data(self.data_manager, (bond_type or "treasury").lower(), start_date, end_date)
+        data = data.dropna(how="all")
+        row = data.iloc[-1] if curve_date is None else data.loc[pd.Timestamp(curve_date)]
+        row = row.dropna()
+        maturities = np.asarray(row.index, dtype=float)
+        yields = row.to_numpy(dtype=float)
+
+        calibrated: ShortRateModel = cls()
+        try:
+            calibrated.fit(maturities, yields, sigma=estimate.sigma)
+        except ValueError:
+            calibrated.fit(maturities, yields)
+        physical = estimate.as_model()
+
+        sims = physical.simulate(horizon_years, n_paths=n_paths, steps_per_year=52, seed=0)
+        quantiles = sims.quantile([0.05, 0.25, 0.5, 0.75, 0.95], axis=1).T
+        quantiles.columns = ["p5", "p25", "p50", "p75", "p95"]
+        horizons = sims.index.to_numpy()
+        smooth = np.linspace(max(0.05, float(maturities.min())), float(maturities.max()), 120)
+        term_premium = short_rate_term_premium(estimate, maturities, yields)
+        return {
+            "model": cls.model_id,
+            "model_name": cls.display_name,
+            "proxy": history.name,
+            "history": history,
+            "estimate": estimate,
+            "physical": physical,
+            "calibrated": calibrated,
+            "as_of": row.name,
+            "maturities": maturities,
+            "observed": yields,
+            "fitted": calibrated.predict(maturities),
+            "smooth": {
+                "maturities": smooth,
+                "fitted": calibrated.predict(smooth),
+                "forward": calibrated.forward_rate(smooth),
+                "expectations": calibrated.expectations_yield(smooth),
+            },
+            "horizons": horizons,
+            "expected_physical": physical.expected_path(horizons),
+            "expected_risk_neutral": calibrated.expected_path(horizons),
+            "quantiles": quantiles,
+            "term_premium": term_premium,
+            "sources": self.data_manager.source_summary(),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Term premium
+    # ------------------------------------------------------------------ #
+    TERM_PREMIUM_SOURCES = ("gsw", "treasury", "tips")
+
+    def zero_curve_panel(
+        self,
+        source: str = "gsw",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        max_maturity_years: float = 10.0,
+        model: str = "nelson-siegel",
+    ) -> pd.DataFrame:
+        """Monthly zero-coupon panel on a 1-month grid up to ``max_maturity_years``.
+
+        ``gsw`` evaluates the Fed's published Svensson parameters; ``treasury``
+        / ``tips`` evaluate this package's own factor history for the bond type.
+        """
+        months = np.arange(1, int(round(max_maturity_years * 12)) + 1)
+        grid = months / 12.0
+        key = source.lower()
+        if key == "gsw":
+            zeros = self.data_manager.get_zero_curve(grid, start_date, end_date, kind="nominal")
+        elif key in {"treasury", "tips"}:
+            factors = self.analyze_historical_factors(key, start_date, end_date, model=model)
+            zeros = zero_panel_from_factors(factors, grid, get_model_class(model))
+        else:
+            raise ValueError(f"source must be one of {self.TERM_PREMIUM_SOURCES}")
+        return to_monthly(zeros)
+
+    def term_premium_analysis(
+        self,
+        source: str = "gsw",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        maturities: Sequence[float] = (2.0, 5.0, 10.0),
+        n_factors: int = 3,
+        max_maturity_years: float = 10.0,
+        dns_method: str = "var",
+        model: str = "nelson-siegel",
+    ) -> Dict:
+        """ACM term premia plus the Diebold-Li expectations split and EH regressions.
+
+        Returns the fitted ``acm`` model, per-maturity ``decomposition`` frames
+        (observed, fitted, risk-neutral, expected short rate, term premium,
+        convexity), the ``dns`` decomposition on the same maturities (from the
+        factor history of ``dns_bond_type``), and Campbell-Shiller / Fama-Bliss
+        ``regressions``.
+        """
+        mats = [float(m) for m in maturities]
+        if max(mats) > max_maturity_years:
+            raise ValueError("maturities must not exceed max_maturity_years")
+        panel = self.zero_curve_panel(source, start_date, end_date, max_maturity_years, model)
+        acm = ACMTermPremiumModel(n_factors=n_factors, max_maturity_months=int(round(max_maturity_years * 12))).fit(panel)
+        decomposition = {m: acm.decompose(m) for m in mats}
+
+        dns_bond = "tips" if source.lower() == "tips" else "treasury"
+        dns_out: Optional[Dict[str, pd.DataFrame]] = None
+        dns_summary: Optional[Dict[str, object]] = None
+        try:
+            factors = self.analyze_historical_factors(dns_bond, start_date, end_date, model=model)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                dns = DynamicNelsonSiegel(dns_method, model_cls=get_model_class(model)).fit(factors)
+            dns_out = dns_term_premium(dns, factors, mats)
+            dns_summary = dns.summary()
+        except ValueError:
+            dns_out = None
+
+        regressions: Dict[str, Dict[str, Dict[str, float]]] = {"campbell_shiller": {}, "fama_bliss": {}}
+        for m in mats:
+            if m > 1.0:
+                try:
+                    regressions["campbell_shiller"][str(m)] = campbell_shiller(panel, m, 1.0).as_dict()
+                    regressions["fama_bliss"][str(m)] = fama_bliss(panel, m, 1.0).as_dict()
+                except ValueError:
+                    continue
+        term_premium = acm.term_premium(mats)
+        benchmark, benchmark_stats = self._acm_benchmark(term_premium, start_date, end_date)
+        return {
+            "source": source.lower(),
+            "panel": panel,
+            "acm": acm,
+            "summary": acm.summary(),
+            "maturities": mats,
+            "decomposition": decomposition,
+            "term_premium": term_premium,
+            "dns": dns_out,
+            "dns_summary": dns_summary,
+            "regressions": regressions,
+            "benchmark": benchmark,
+            "benchmark_stats": benchmark_stats,
+            "sources": self.data_manager.source_summary(),
+        }
+
+    def _acm_benchmark(
+        self,
+        term_premium: pd.DataFrame,
+        start_date: Optional[str],
+        end_date: Optional[str],
+    ) -> Tuple[Optional[pd.DataFrame], Dict[float, Dict[str, float]]]:
+        """NY Fed ACM premia (monthly) on the maturities we estimated, with agreement statistics.
+
+        Returns ``(benchmark, stats)``; ``benchmark`` is ``None`` when no live
+        source served the series (there is deliberately no synthetic stand-in).
+        ``stats[m]`` holds the overlap count, correlation, mean gap (ours minus
+        NY Fed, bps), RMSE of the gap and the latest values.
+        """
+        try:
+            raw = self.data_manager.get_acm_benchmark(start_date, end_date)
+        except Exception:  # noqa: BLE001 - the benchmark is optional
+            return None, {}
+        if raw is None or raw.empty:
+            return None, {}
+        monthly = to_monthly(raw)
+        cols = [m for m in term_premium.columns if float(m) in monthly.columns]
+        if not cols:
+            return None, {}
+        benchmark = monthly[cols].dropna(how="all")
+        stats: Dict[float, Dict[str, float]] = {}
+        for m in cols:
+            joined = pd.concat([term_premium[m].rename("ours"), benchmark[m].rename("nyfed")], axis=1, join="inner").dropna()
+            if len(joined) < 12:
+                continue
+            gap = joined["ours"] - joined["nyfed"]
+            stats[float(m)] = {
+                "n": int(len(joined)),
+                "correlation": float(joined["ours"].corr(joined["nyfed"])),
+                "mean_gap_bps": float(gap.mean() * 1e4),
+                "rmse_bps": float(np.sqrt((gap**2).mean()) * 1e4),
+                "latest_ours_pct": float(joined["ours"].iloc[-1] * 100.0),
+                "latest_benchmark_pct": float(joined["nyfed"].iloc[-1] * 100.0),
+                "latest_date": joined.index[-1].strftime("%Y-%m-%d"),
+            }
+        return benchmark, stats
+
+    # ------------------------------------------------------------------ #
+    # Curve and bond analytics
+    # ------------------------------------------------------------------ #
+    def curve_analytics(
+        self,
+        bond_type: str = "treasury",
+        model: str = "nelson-siegel",
+        horizon: float = 1.0,
+        lookback_days: int = 365,
+        end_date: Optional[str] = None,
+    ) -> Dict:
+        """Snapshot analytics: fit, carry/roll-down, forwards, spreads, rich/cheap, changes, PCA."""
+        bond_key = (bond_type or "treasury").lower()
+        end = pd.Timestamp(end_date) if end_date else pd.Timestamp.today().normalize()
+        start = end - pd.Timedelta(days=int(lookback_days) + 10)
+        panel = self._get_data(self.data_manager, bond_key, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+        panel = panel.dropna(how="all")
+        if panel.empty:
+            raise ValueError("no curve data available")
+        row = panel.iloc[-1].dropna()
+        maturities = np.asarray(row.index, dtype=float)
+        yields = row.to_numpy(dtype=float)
+        curve = make_any_model(model, bond_key).fit(maturities, yields)
+        full = [m for m in (0.25, 1, 2, 3, 5, 7, 10, 20, 30) if maturities.min() - 1e-9 <= m <= maturities.max() + 1e-9]
+        pairs = [(a, b) for a, b in ((1, 1), (2, 1), (3, 2), (5, 5), (10, 10), (1, 2), (2, 3), (10, 20)) if a + b <= maturities.max() + 1e-9 and a >= maturities.min()]
+        spread_defs = {
+            name: legs
+            for name, legs in SPREAD_DEFINITIONS.items()
+            if all(maturities.min() - 1e-9 <= m <= maturities.max() + 1e-9 for m, _ in legs)
+        }
+        pca = None
+        try:
+            pca = pca_yield_changes(panel)
+        except ValueError:
+            pass
+        return {
+            "bond_type": bond_key,
+            "model": curve.model_id,
+            "as_of": row.name,
+            "curve": curve,
+            "maturities": maturities,
+            "observed": yields,
+            "carry_roll_down": carry_roll_down(curve, full, horizon),
+            "forwards": forward_rate_table(curve, pairs) if pairs else pd.DataFrame(),
+            "spreads": curve_spreads(curve, spread_defs) if spread_defs else pd.Series(dtype=float),
+            "spread_history": curve_spreads(panel, spread_defs) if spread_defs else pd.DataFrame(index=panel.index),
+            "rich_cheap": rich_cheap(curve, maturities, yields),
+            "changes": curve_changes(panel),
+            "pca": pca,
+            "sources": self.data_manager.source_summary(),
+        }
+
+    def bond_analytics(
+        self,
+        bond: Bond,
+        bond_type: str = "treasury",
+        model: str = "nelson-siegel",
+        price: Optional[float] = None,
+        maturities: Optional[Sequence[float]] = None,
+        yields: Optional[Sequence[float]] = None,
+    ) -> Dict:
+        """Price and risk a bond off the latest curve (or supplied quotes)."""
+        bond_key = (bond_type or "treasury").lower()
+        if maturities is None or yields is None:
+            panel = self._get_data(self.data_manager, bond_key).dropna(how="all")
+            row = panel.iloc[-1].dropna()
+            maturities = np.asarray(row.index, dtype=float)
+            yields = row.to_numpy(dtype=float)
+            as_of = row.name
+        else:
+            maturities = np.asarray(maturities, dtype=float)
+            yields = np.asarray(yields, dtype=float)
+            as_of = None
+        curve = make_any_model(model, bond_key).fit(maturities, yields)
+        keys = [k for k in (0.25, 1, 2, 3, 5, 7, 10, 20, 30) if k <= max(maturities.max(), bond.maturity) + 1e-9]
+        report = bond_report(bond, curve, price=price, key_tenors=keys)
+        report.update({"bond": bond, "curve": curve, "as_of": as_of, "model": curve.model_id})
+        return report

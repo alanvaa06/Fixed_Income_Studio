@@ -1,0 +1,85 @@
+<!-- ============================== LEARN TAB ============================ -->
+<section class="tab-pane" data-tab-pane="learn">
+  <header class="page-head">
+    <div>
+      <h2>Learn the Models</h2>
+      <p class="muted">A short tour of the math, the factors, the short-rate models, term premia and how to read the signals.</p>
+    </div>
+  </header>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h3>Nelson-Siegel &amp; Svensson</h3></div>
+      <div class="card-body learn">
+        <p>The Nelson-Siegel form expresses the yield <code>y</code> at maturity <code>t</code> (years) with a decay parameter <code>&tau;</code>:</p>
+        <div class="formula big">
+          <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] + &beta;<sub>2</sub>&middot;{[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] - e<sup>-t/&tau;</sup>}</code>
+        </div>
+        <ul class="checklist">
+          <li><b>&beta;<sub>0</sub> Level</b>: long-run yield, parallel shifts.</li>
+          <li><b>&beta;<sub>1</sub> Slope</b>: short minus long (<code>y(0) = &beta;<sub>0</sub> + &beta;<sub>1</sub></code>); negative when upward-sloping.</li>
+          <li><b>&beta;<sub>2</sub> Curvature</b>: the mid-curve hump, peaking near <code>1.8&middot;&tau;</code> years.</li>
+          <li><b>Svensson</b> adds <code>&beta;<sub>3</sub>&middot;f<sub>2</sub>(t,&tau;<sub>2</sub>)</code>, a second hump for the long end; it needs six or more quotes.</li>
+        </ul>
+        <p>The fitter profiles the sum of squared errors over &tau; on a grid with closed-form betas, then refines locally. Deterministic, no initial guess, restricted to the identifiable &tau; range.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Short-rate models</h3></div>
+      <div class="card-body learn">
+        <div class="formula"><code>Vasicek: dr = &kappa;(&theta; &minus; r)dt + &sigma; dW</code><br /><code>CIR: dr = &kappa;(&theta; &minus; r)dt + &sigma;&radic;r dW</code></div>
+        <p>One state variable, the instantaneous rate <code>r</code>, drives the whole curve. Bond prices are <code>P(t) = exp(A(t) &minus; B(t)&middot;r)</code> in closed form, so yields, forwards and discount factors follow immediately.</p>
+        <ul class="checklist">
+          <li><b>Time-series estimate (P)</b>: regress the proxy on its lag (Vasicek) or the scaled changes (CIR), or maximise the exact transition likelihood.</li>
+          <li><b>Calibration (Q)</b>: fit the same parameters to today's curve. Only the risk-neutral drift is identified; &sigma; comes from the time series.</li>
+          <li><b>Feller condition</b> <code>2&kappa;&theta; &ge; &sigma;&sup2;</code> keeps CIR rates strictly positive.</li>
+          <li><b>Half-life</b> <code>ln 2 / &kappa;</code>: years for a shock to halve.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Term premium</h3></div>
+      <div class="card-body learn">
+        <div class="formula"><code>y<sub>t</sub>(n) = (1/n) &Sigma; E<sub>t</sub>[r<sub>t+i</sub>] + TP<sub>t</sub>(n) + convexity</code></div>
+        <p>A long yield is what the market expects short rates to average over the bond's life, plus a premium for duration risk. The premium is not observable, so it is estimated with a no-arbitrage model:</p>
+        <ul class="checklist">
+          <li><b>ACM (2013)</b>: principal-component factors, a VAR, excess-return regressions, prices of risk, affine recursions. Term premium = fitted yield &minus; yield with the prices of risk switched off.</li>
+          <li><b>Diebold-Li split</b>: project Level + Slope with the AR/VAR dynamics and average. Fast and intuitive; ignores no-arbitrage.</li>
+          <li><b>Campbell-Shiller</b>: regress future yield changes on the slope; a slope of one means expectations explain everything, the usual negative slope means premia move.</li>
+          <li><b>Fama-Bliss</b>: regress excess returns on forward spreads; a slope near one says forwards forecast returns, not rates.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Curve analytics glossary</h3></div>
+      <div class="card-body learn">
+        <ul class="checklist">
+          <li><b>Carry</b>: yield earned over funding (the horizon rate). <b>Roll-down</b>: price gain from sliding down an unchanged curve. Total beats zero only if the curve realises less than the forwards.</li>
+          <li><b>Forwards</b> such as 5y5y: the rate the curve implies for a 5-year loan starting in 5 years, <code>(10&middot;y(10) &minus; 5&middot;y(5)) / 5</code>.</li>
+          <li><b>2s10s, 5s30s</b>: slope in bps. <b>2s5s10s butterfly</b>: <code>2&middot;y(5) &minus; y(2) &minus; y(10)</code>, belly rich when negative.</li>
+          <li><b>Rich / cheap</b>: residual versus the fitted curve. Positive = higher yield than the model, i.e. cheap.</li>
+          <li><b>Duration, convexity, DV01</b>: price sensitivity to yield. <b>Key-rate durations</b> split it by the part of the curve that moves.</li>
+          <li><b>PCA</b>: the first three components of daily yield changes are the empirical level, slope and curvature, usually 95%+ of the variance.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Data sources</h3></div>
+      <div class="card-body learn">
+        <ul class="checklist">
+          <li><b>FRED API</b> (key): daily constant-maturity Treasury and TIPS yields, effective fed funds.</li>
+          <li><b>U.S. Treasury</b> (no key): the daily par yield curve and real yield curve XML feeds.</li>
+          <li><b>FRED public CSV</b> (no key): the same series through <code>fredgraph.csv</code>.</li>
+          <li><b>Fed Board GSW</b> (no key): Gurkaynak-Sack-Wright fitted Svensson parameters and zero yields back to 1961, the term-premium workhorse.</li>
+          <li><b>NY Fed ACM term premia</b> (no key): the published Adrian-Crump-Moench series, redistributed by FRED as <code>THREEFYTP1</code>&hellip;<code>THREEFYTP10</code>, overlaid on the Term Premium tab as a benchmark. No synthetic stand-in exists for it.</li>
+          <li><b>Synthetic</b>: a calendar-anchored factor process so every feature works offline. The sidebar shows which source answered each dataset.</li>
+        </ul>
+        <p class="muted">Keyboard: <kbd>Alt</kbd>+<kbd>1</kbd>&hellip;<kbd>8</kbd> switch tabs, <kbd>Alt</kbd>+<kbd>T</kbd> toggles the theme. Settings persist in your browser.</p>
+      </div>
+    </div>
+  </div>
+</section>
