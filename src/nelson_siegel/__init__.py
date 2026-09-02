@@ -5,22 +5,37 @@ A Python library for yield curve modeling using the Nelson-Siegel methodology.
 Supports both nominal Treasury and real TIPS yield curve analysis.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Economics Research Team"
 __email__ = "research@example.com"
 
-from .model import NelsonSiegelModel, TreasuryNelsonSiegelModel, TIPSNelsonSiegelModel
+from .model import (
+    MODEL_REGISTRY,
+    CurveModel,
+    FactorMeta,
+    NelsonSiegelModel,
+    SvenssonModel,
+    TIPSNelsonSiegelModel,
+    TreasuryNelsonSiegelModel,
+    get_model_class,
+    list_models,
+    make_model,
+)
 from .data import TreasuryDataDownloader, TIPSDataDownloader, DataManager
 from .analysis import YieldCurveAnalyzer
+from .dynamic import DynamicNelsonSiegel, backtest
 from .plotting import YieldCurvePlotter
 
 # Optional interactive components (requires ipywidgets)
 try:
-    from .interactive import InteractiveYieldCurveExplorer, HistoricalFactorExplorer, create_yield_curve_tutorial
-    HAS_INTERACTIVE = True
-except (ImportError, NameError):
-    # NameError can occur when ipywidgets is missing because the module's
-    # class annotations reference `widgets.Widget` at class definition time.
+    from .interactive import (
+        HAS_IPYWIDGETS,
+        HistoricalFactorExplorer,
+        InteractiveYieldCurveExplorer,
+        create_yield_curve_tutorial,
+    )
+    HAS_INTERACTIVE = HAS_IPYWIDGETS
+except ImportError:
     HAS_INTERACTIVE = False
 
 # Optional web UI (requires Flask)
@@ -31,13 +46,22 @@ except ImportError:
     HAS_WEBAPP = False
 
 __all__ = [
+    "CurveModel",
+    "FactorMeta",
+    "MODEL_REGISTRY",
+    "get_model_class",
+    "list_models",
+    "make_model",
     "NelsonSiegelModel",
+    "SvenssonModel",
     "TreasuryNelsonSiegelModel",
     "TIPSNelsonSiegelModel",
     "TreasuryDataDownloader",
     "TIPSDataDownloader",
     "DataManager",
     "YieldCurveAnalyzer",
+    "DynamicNelsonSiegel",
+    "backtest",
     "YieldCurvePlotter",
 ]
 

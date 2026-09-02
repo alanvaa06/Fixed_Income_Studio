@@ -5,11 +5,12 @@ This module provides interactive Jupyter notebook widgets for exploring
 Nelson-Siegel yield curve parameters and their economic interpretations.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Dict, Optional, Tuple, List
-import warnings
 
 # Handle optional ipywidgets import
 try:
@@ -17,13 +18,11 @@ try:
     from IPython.display import display, HTML
     HAS_IPYWIDGETS = True
 except ImportError:
-    HAS_IPYWIDGETS = False
-    print("Warning: ipywidgets not available. Install with: pip install ipywidgets")
+    HAS_IPYWIDGETS = False  # the package-level import guard reports this
 
 from .model import NelsonSiegelModel, TreasuryNelsonSiegelModel, TIPSNelsonSiegelModel
 from .data import DataManager
 
-warnings.filterwarnings('ignore')
 
 
 class InteractiveYieldCurveExplorer:
