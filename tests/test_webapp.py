@@ -398,3 +398,5 @@ def test_index_serves_all_studio_tabs_and_modules():
         assert f"js/{script}" in html, script
     assert "Fixed Income Studio" in html and "v2." in html
     assert 'id="btn-theme"' in html and 'id="synthetic-banner"' in html
+    # Term Premium tab: inline notice region for stale results and validation errors.
+    assert 'id="tp-notice"' in html and 'role="status"' in html and 'id="btn-tp-reset-dates"' in html

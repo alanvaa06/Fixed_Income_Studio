@@ -3,17 +3,75 @@
   "use strict";
   const { $, $$, COLOR, SERIES, state, saveSettings, toast, setBusy, fmt } = S;
 
+  // First observation of each zero-curve source; the ACM fit needs 36 months.
+  const SOURCE_START = { gsw: "1961-06-14", treasury: "1962-01-02", tips: "1999-01-04" };
+  const MIN_MONTHS = 36;
+
   function applyRange(years) {
     const { start, end } = S.rangeDates(years);
-    $("#tp-start").value = start;
+    const first = SOURCE_START[state.tpSource] || SOURCE_START.gsw;
+    $("#tp-start").value = start < first ? first : start;  // "Max" means the source's own first observation
     $("#tp-end").value = end;
     S.setChips("#tp-chips", "tpRange", years);
     state.tpRange = String(years);
     saveSettings();
   }
   function maturities() {
-    const m = (state.tpMaturities || ["2", "5", "10"]).map(Number).filter((v) => v > 0).sort((a, b) => a - b);
-    return m.length ? m : [2, 5, 10];
+    const m = (state.tpMaturities || []).map(Number).filter((v) => v > 0).sort((a, b) => a - b);
+    return m;
+  }
+  function applyDateBounds() {
+    const today = S.isoDate(new Date());
+    const min = SOURCE_START[state.tpSource] || SOURCE_START.gsw;
+    ["tp-start", "tp-end"].forEach((id) => { const el = $("#" + id); el.min = min; el.max = today; });
+  }
+
+  // ---- Inline notice: stale results and validation errors -------------------
+  function showNotice(kind, text, { resetDates = false } = {}) {
+    const box = $("#tp-notice");
+    box.className = `notice ${kind}`;
+    $("#tp-notice-text").textContent = text;
+    $("#btn-tp-reset-dates").hidden = !resetDates;
+    box.hidden = false;
+  }
+  function clearNotice() {
+    $("#tp-notice").hidden = true;
+    delete $("#tp-results").dataset.stale;
+    $("#btn-tp-run").classList.remove("attention");
+  }
+  function clearInvalid() {
+    ["tp-start", "tp-end"].forEach((id) => {
+      const el = $("#" + id);
+      el.removeAttribute("aria-invalid");
+      el.removeAttribute("aria-describedby");
+    });
+  }
+  function markInvalid(el) {
+    if (!el) return;
+    el.setAttribute("aria-invalid", "true");
+    el.setAttribute("aria-describedby", "tp-notice-text");
+    el.focus();
+  }
+  function markStale() {
+    if (!state.lastTermPremium || $("#tp-results").hidden) return;
+    $("#tp-results").dataset.stale = "true";
+    $("#btn-tp-run").classList.add("attention");
+    showNotice("stale", "Settings changed. The results below are from the previous settings; press Estimate to refresh.");
+  }
+  function validate() {
+    const startEl = $("#tp-start"), endEl = $("#tp-end");
+    const start = startEl.value, end = endEl.value;
+    const min = SOURCE_START[state.tpSource] || SOURCE_START.gsw;
+    const today = S.isoDate(new Date());
+    if (!maturities().length) return { text: "Select at least one tenor to estimate.", field: $("#tp-mat-chips .chip") };
+    if (!start) return { text: "Enter a start date.", field: startEl, dates: true };
+    if (!end) return { text: "Enter an end date.", field: endEl, dates: true };
+    if (start < min) return { text: `Start date is before the first ${state.tpSource.toUpperCase()} observation (${min}).`, field: startEl, dates: true };
+    if (end > today) return { text: `End date is in the future (latest is ${today}).`, field: endEl, dates: true };
+    if (start >= end) return { text: "Start date must be before the end date.", field: startEl, dates: true };
+    const months = (new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24 * 30.44);
+    if (months < MIN_MONTHS) return { text: `The sample is ${Math.floor(months)} months; the ACM fit needs at least ${MIN_MONTHS}. Widen the dates or pick a sample chip.`, field: startEl, dates: true };
+    return null;
   }
 
   function renderMetrics(j) {
@@ -119,6 +177,14 @@
 
   async function run() {
     const btn = $("#btn-tp-run");
+    clearInvalid();
+    const problem = validate();
+    if (problem) {
+      showNotice("error", problem.text, { resetDates: !!problem.dates });
+      if (problem.dates) markInvalid(problem.field); else if (problem.field) problem.field.focus();
+      if (state.lastTermPremium) $("#tp-results").dataset.stale = "true";
+      return;
+    }
     setBusy(btn, true, "Estimating…");
     S.setChartLoading(["chart-tp-history", "chart-tp-decomp"]);
     const params = new URLSearchParams({
@@ -128,6 +194,7 @@
     try {
       const j = await S.api(`/api/term-premium?${params.toString()}`, {}, { timeout: 120000 });
       state.lastTermPremium = j;
+      clearNotice();
       renderMetrics(j);
       plotHistory(j);
       $("#tp-focus-chips").innerHTML = j.maturities.map((m) => `<button class="chip" data-tp-focus="${m}">${S.tenorLabel(m)}</button>`).join("");
@@ -143,7 +210,10 @@
       window.dispatchEvent(new Event("resize"));
       toast("Term premium estimated.", "success");
     } catch (err) {
-      toast(err.message, "error");
+      const dates = /observation|date|range|month|sample/i.test(err.message);
+      showNotice("error", err.message, { resetDates: dates });
+      if (dates) markInvalid($("#tp-start"));
+      if (state.lastTermPremium) $("#tp-results").dataset.stale = "true";
     } finally {
       setBusy(btn, false);
       S.setChartLoading(["chart-tp-history", "chart-tp-decomp"], false);
@@ -170,13 +240,23 @@
   }
 
   function init() {
-    S.bindSegmented('.seg-btn[data-tp-source]', "tpSource", (v) => { state.tpSource = v; saveSettings(); });
-    S.bindSegmented('.seg-btn[data-tp-dns]', "tpDns", (v) => { state.tpDns = v; saveSettings(); });
-    S.bindChips("#tp-chips", "tpRange", applyRange);
-    S.bindChips("#tp-factor-chips", "tpFactors", (v) => { state.tpFactors = v; saveSettings(); });
-    S.bindChips("#tp-mat-chips", "tpMat", (vals) => { state.tpMaturities = vals; saveSettings(); }, { multi: true });
-    ["tp-start", "tp-end"].forEach((id) => $("#" + id).addEventListener("change", () => $$("#tp-chips .chip").forEach((c) => c.classList.remove("active"))));
+    S.bindSegmented('.seg-btn[data-tp-source]', "tpSource", (v) => {
+      state.tpSource = v; saveSettings(); applyDateBounds();
+      if ($$("#tp-chips .chip.active").length) applyRange(state.tpRange);  // keep a chip range valid for the new source
+      markStale();
+    });
+    S.bindSegmented('.seg-btn[data-tp-dns]', "tpDns", (v) => { state.tpDns = v; saveSettings(); markStale(); });
+    S.bindChips("#tp-chips", "tpRange", (v) => { applyRange(v); markStale(); });
+    S.bindChips("#tp-factor-chips", "tpFactors", (v) => { state.tpFactors = v; saveSettings(); markStale(); });
+    S.bindChips("#tp-mat-chips", "tpMat", (vals) => { state.tpMaturities = vals; saveSettings(); markStale(); }, { multi: true });
+    ["tp-start", "tp-end"].forEach((id) => {
+      const el = $("#" + id);
+      el.addEventListener("change", () => { $$("#tp-chips .chip").forEach((c) => c.classList.remove("active")); markStale(); });
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+    });
     $("#btn-tp-run").addEventListener("click", run);
+    $("#btn-tp-notice-run").addEventListener("click", run);
+    $("#btn-tp-reset-dates").addEventListener("click", () => { clearInvalid(); applyRange("max"); run(); });
     $("#btn-tp-export").addEventListener("click", exportCSV);
 
     S.activateSegmentedByData('.seg-btn[data-tp-source]', "tpSource", state.tpSource);
@@ -184,6 +264,7 @@
     S.setChips("#tp-factor-chips", "tpFactors", state.tpFactors);
     S.setChips("#tp-mat-chips", "tpMat", state.tpMaturities || ["2", "5", "10"]);
     applyRange(state.tpRange);
+    applyDateBounds();
   }
 
   S.registerTab("termpremium", { init, onShow: (first) => { if (first && !state.lastTermPremium) run(); } });

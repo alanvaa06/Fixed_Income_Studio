@@ -43,6 +43,13 @@
   </header>
 
   <p class="muted empty-state" id="tp-empty">Estimating the affine model&hellip;</p>
+  <div class="notice" id="tp-notice" role="status" aria-live="polite" hidden>
+    <span class="notice-text" id="tp-notice-text"></span>
+    <div class="notice-actions">
+      <button class="btn small ghost" id="btn-tp-reset-dates" type="button" hidden>Reset dates</button>
+      <button class="btn small primary" id="btn-tp-notice-run" type="button">Estimate</button>
+    </div>
+  </div>
   <div id="tp-results" hidden>
     <div class="grid grid-6" id="tp-metrics"></div>
 

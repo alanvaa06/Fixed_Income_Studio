@@ -218,6 +218,26 @@ body[data-synthetic="false"] .status-dot { background: var(--accent-3); box-shad
 .muted { color: var(--text-dim); font-size: 13px; }
 .note { margin: 10px 0 0; font-size: 12.5px; }
 .note:empty { display: none; }
+
+/* ----- Inline notice: stale results / validation errors ----- */
+.notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--bg-2); color: var(--text); font-size: 13px;
+  animation: fadeIn 0.2s ease;
+}
+.notice[hidden] { display: none; }
+.notice.stale { border-color: rgba(251, 191, 36, 0.5); }
+.notice.error { border-color: rgba(239, 68, 68, 0.6); }
+.notice-text { flex: 1 1 240px; }
+.notice.error .notice-text { font-weight: 500; }
+.notice-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+#tp-results[data-stale] .metric,
+#tp-results[data-stale] .card { opacity: 0.55; filter: saturate(0.5); transition: opacity 0.2s ease, filter 0.2s ease; }
+.btn.attention { outline: 2px solid var(--warn); outline-offset: 2px; }
+.input[aria-invalid="true"] { border-color: var(--danger); }
+.input[aria-invalid="true"]:focus { outline-color: rgba(239, 68, 68, 0.45); border-color: var(--danger); }
 .page-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .empty-state { padding: 18px 0 30px; }
 
