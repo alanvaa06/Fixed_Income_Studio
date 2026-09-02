@@ -75,7 +75,7 @@ def interpolate_maturities(panel: pd.DataFrame, maturities: Sequence[float]) -> 
     order = np.argsort(cols)
     cols = cols[order]
     values = panel.to_numpy(dtype=float)[:, order]
-    target = np.asarray(maturities, dtype=float)
+    target = np.asarray(list(dict.fromkeys(float(m) for m in maturities)), dtype=float)
     out = np.empty((len(panel), len(target)))
     for i in range(len(panel)):
         row = values[i]

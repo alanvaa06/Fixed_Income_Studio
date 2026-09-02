@@ -101,7 +101,7 @@ class ShortRateModel:
         "r0": (-0.05, 0.30),
         "kappa": (0.01, 3.0),
         "theta": (-0.05, 0.30),
-        "sigma": (0.001, 0.10),
+        "sigma": (0.001, 0.05),
     }
     #: Grid of mean-reversion starts for the multi-start calibration.
     kappa_starts: Tuple[float, ...] = (0.05, 0.15, 0.4, 1.0)
@@ -413,7 +413,7 @@ class CIRModel(ShortRateModel):
         "r0": (1e-4, 0.30),
         "kappa": (0.01, 3.0),
         "theta": (1e-4, 0.30),
-        "sigma": (0.005, 0.60),
+        "sigma": (0.005, 0.30),
     }
 
     @staticmethod

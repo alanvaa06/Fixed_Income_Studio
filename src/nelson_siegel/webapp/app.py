@@ -13,7 +13,12 @@ GET  /api/compare            Compare Treasury vs TIPS factor histories
 GET  /api/models             List available curve models and their factors
 GET  /api/forecast           Diebold-Li factor and curve forecast (AR/VAR/random walk)
 GET  /api/backtest           Out-of-sample RMSE of the three forecasters vs realised factors
-GET  /api/health             Health check
+GET  /api/health             Health check and data-source provenance
+GET  /api/data-sources       Which source served each dataset (FRED, treasury.gov, GSW, synthetic)
+GET  /api/short-rate         Vasicek/CIR: physical estimate, calibration, simulation fan, term premium
+GET  /api/term-premium       ACM affine term premia, Diebold-Li EH split, Campbell-Shiller / Fama-Bliss
+GET  /api/analytics          Carry & roll-down, forwards, spreads, rich/cheap, curve changes, PCA
+POST /api/bond               Price and risk a bond off the fitted curve (duration, convexity, KRDs)
 """
 
 from __future__ import annotations
@@ -28,8 +33,11 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file
 
 from ..analysis import YieldCurveAnalyzer
+from ..analytics import Bond
+from ..data import SOURCE_LABELS, SOURCE_SYNTHETIC
 from ..dynamic import METHODS, DynamicNelsonSiegel, backtest
-from ..model import NelsonSiegelModel, SvenssonModel, get_model_class, list_models, make_model
+from ..model import NelsonSiegelModel, SvenssonModel, get_model_class
+from ..registry import AnyCurveModel, get_any_model_class, list_all_models, make_any_model
 from ._factors_cache import FactorsCache
 from .warmup import cancel_warmup, start_warmup
 
@@ -51,9 +59,9 @@ def _local_plotly_path() -> Optional[str]:
     return path if os.path.exists(path) else None
 
 
-def _model_for(bond_type: str, model_id: Optional[str] = None) -> NelsonSiegelModel:
-    """Instantiate the requested model with the bond-type preset (raises ValueError)."""
-    return make_model(model_id or "nelson-siegel", (bond_type or "treasury").lower())
+def _model_for(bond_type: str, model_id: Optional[str] = None) -> AnyCurveModel:
+    """Instantiate the requested model (any family) with the bond-type preset (raises ValueError)."""
+    return make_any_model(model_id or "nelson-siegel", (bond_type or "treasury").lower())
 
 
 def _smooth_grid(min_mat: float, max_mat: float, points: int = 200) -> np.ndarray:
@@ -74,8 +82,8 @@ def _to_pct(arr: np.ndarray) -> List[float]:
     return [float(x) * 100.0 for x in np.asarray(arr).ravel()]
 
 
-def _factor_payload(model: NelsonSiegelModel) -> Dict[str, Any]:
-    """Generic factor payload: rates in percent, decays in years, plus metadata."""
+def _factor_payload(model: AnyCurveModel) -> Dict[str, Any]:
+    """Generic factor payload: rates in percent, decays in years, other units raw."""
     params = model.parameters or {}
     factor_list = []
     factors: Dict[str, float] = {}
@@ -89,9 +97,23 @@ def _factor_payload(model: NelsonSiegelModel) -> Dict[str, Any]:
     return {
         "model": model.model_id,
         "model_name": model.display_name,
+        "family": getattr(model, "family", "parametric"),
         "factors": factors,
         "factor_list": factor_list,
     }
+
+
+def _series_pct(values: Any) -> List[Optional[float]]:
+    return [_json_float(v * 100.0) if v is not None and not np.isnan(v) else None for v in np.asarray(values, dtype=float)]
+
+
+def _dates(index: Any) -> List[str]:
+    return [pd.Timestamp(d).strftime("%Y-%m-%d") for d in index]
+
+
+def _frame_pct(frame: pd.DataFrame) -> Dict[str, List[Optional[float]]]:
+    """Columns of a decimal-rate frame as percent lists keyed by column name."""
+    return {str(c): _series_pct(frame[c].to_numpy()) for c in frame.columns}
 
 
 def _factors_in_percent(factors: Dict[str, float]) -> Dict[str, float]:
@@ -164,6 +186,25 @@ def create_app(
     def _parse_model(default: str = "nelson-siegel") -> type:
         return get_model_class(request.args.get("model") or default)
 
+    def _source_info() -> Dict[str, Any]:
+        """Provenance of the data behind the current response."""
+        dm = app.config["DATA_MANAGER"]
+        summary = dm.source_summary()
+        return {
+            "is_synthetic": dm.is_synthetic,
+            "sources": {k: (SOURCE_LABELS.get(v, v) if v else None) for k, v in summary.items()},
+            "source_ids": summary,
+            "public_sources": bool(dm.public_sources),
+            "fred_api_key": bool(app.config["FRED_KEY_PRESENT"]),
+        }
+
+    def _cached_result(key: tuple, compute: Any) -> Dict[str, Any]:
+        cache: FactorsCache = app.config["RESULT_CACHE"]
+        return cache.get_or_compute(key, compute)
+
+    def _window_key(*parts: Any) -> tuple:
+        return tuple(parts) + (bool(app.config["FRED_KEY_PRESENT"]),)
+
     def configure_data_source(api_key: Optional[str]) -> None:
         normalized_key = api_key.strip() if api_key else None
         cancel_warmup(app)
@@ -174,6 +215,7 @@ def create_app(
         app.config["DATA_MANAGER"] = analyzer.data_manager
         app.config["FRED_KEY_PRESENT"] = bool(normalized_key)
         app.config["FACTORS_CACHE"] = FactorsCache()
+        app.config["RESULT_CACHE"] = FactorsCache()
         if enable_warmup:
             start_warmup(app, _get_cached_factors, years=warmup_years)
 
@@ -205,15 +247,29 @@ def create_app(
         return jsonify(
             {
                 "status": "ok",
-                "fred_api_key": app.config["FRED_KEY_PRESENT"],
+                "version": __import__("nelson_siegel").__version__,
                 "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                **_source_info(),
             }
         )
 
+    @app.get("/api/data-sources")
+    def data_sources() -> Any:
+        """Which source served each dataset so far, plus the available chain."""
+        info = _source_info()
+        info["chain"] = [
+            {"id": "fred-api", "label": SOURCE_LABELS["fred-api"], "needs_key": True},
+            {"id": "treasury.gov", "label": SOURCE_LABELS["treasury.gov"], "needs_key": False},
+            {"id": "fred-public-csv", "label": SOURCE_LABELS["fred-public-csv"], "needs_key": False},
+            {"id": "fed-gsw", "label": SOURCE_LABELS["fed-gsw"], "needs_key": False},
+            {"id": SOURCE_SYNTHETIC, "label": SOURCE_LABELS[SOURCE_SYNTHETIC], "needs_key": False},
+        ]
+        return jsonify(info)
+
     @app.get("/api/models")
     def models() -> Any:
-        """List the registered curve models with their factor metadata."""
-        return jsonify({"models": list_models()})
+        """List the registered curve models (parametric and short-rate) with factor metadata."""
+        return jsonify({"models": list_all_models()})
 
     @app.post("/api/fred-key")
     def set_fred_key() -> Any:
@@ -254,12 +310,13 @@ def create_app(
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        if len(maturities) < model.n_params:
+        min_points = int(model.describe()["min_points"])
+        if len(maturities) < min_points:
             return (
                 jsonify(
                     {
                         "error": (
-                            f"At least {model.n_params} (maturity, yield) points are required "
+                            f"At least {min_points} (maturity, yield) points are required "
                             f"for the {model.display_name} model."
                         )
                     }
@@ -287,6 +344,7 @@ def create_app(
                 "maturities": maturities.tolist(),
                 "observed": _to_pct(yields),
                 "fitted": _to_pct(fitted),
+                "discount_factors": [float(v) for v in model.discount_factor(maturities)],
                 "deviations_bps": [float(d) * 10000.0 for d in deviations],
                 "rmse_bps": rmse * 10000.0,
                 "n_points": int(len(maturities)),
@@ -363,13 +421,14 @@ def create_app(
             return jsonify({"error": "No data available."}), 404
 
         last_row = data.dropna(how="all").iloc[-1].dropna()
-        if len(last_row) < model.n_params:
+        min_points = int(model.describe()["min_points"])
+        if len(last_row) < min_points:
             return (
                 jsonify(
                     {
                         "error": (
                             f"Latest snapshot has {len(last_row)} maturities; the "
-                            f"{model.display_name} model needs {model.n_params}."
+                            f"{model.display_name} model needs {min_points}."
                         )
                     }
                 ),
@@ -399,7 +458,7 @@ def create_app(
                     "forward": _to_pct(model.forward_rate(smooth_x)),
                 },
                 "rmse_bps": float(np.sqrt(np.mean((yields - fitted) ** 2)) * 10000.0),
-                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+                **_source_info(),
             }
         )
 
@@ -454,7 +513,7 @@ def create_app(
                 "tau": tau.tolist(),
                 **_factor_series(factors, model_cls),
                 "rmse_bps": [None if np.isnan(v) else float(v) for v in rmse_bps],
-                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+                **_source_info(),
                 "summary": {
                     "n_observations": int(len(factors)),
                     "start": factors.index[0].strftime("%Y-%m-%d"),
@@ -549,7 +608,7 @@ def create_app(
                     "residual_std_bps": {k: v * 10000.0 for k, v in summary["residual_std"].items()},
                     "history_start": factors.index[0].strftime("%Y-%m-%d"),
                 },
-                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+                **_source_info(),
             }
         )
 
@@ -614,7 +673,7 @@ def create_app(
                 "min_train": min_train,
                 "rows": rows,
                 "n_observations": int(len(factors)),
-                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+                **_source_info(),
             }
         )
 
@@ -672,7 +731,318 @@ def create_app(
                         "end": common_dates[-1].strftime("%Y-%m-%d"),
                     },
                 },
-                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+                **_source_info(),
+            }
+        )
+
+
+    # ------------------------------------------------------------------ #
+    # Short-rate models
+    # ------------------------------------------------------------------ #
+    @app.get("/api/short-rate")
+    def short_rate() -> Any:
+        """Vasicek / CIR study: physical estimate, curve calibration, simulation fan, term premium."""
+        bond_type = request.args.get("bond_type", "treasury").lower()
+        model_id = (request.args.get("model") or "vasicek").lower()
+        method = (request.args.get("method") or "ols").lower()
+        proxy = (request.args.get("proxy") or "policy").lower()
+        start_date = request.args.get("start")
+        end_date = request.args.get("end")
+        if bond_type not in {"treasury", "tips"}:
+            return jsonify({"error": "bond_type must be 'treasury' or 'tips'."}), 400
+        if model_id not in {"vasicek", "cir"}:
+            return jsonify({"error": "model must be 'vasicek' or 'cir'."}), 400
+        if method not in {"ols", "mle"}:
+            return jsonify({"error": "method must be 'ols' or 'mle'."}), 400
+        if proxy not in YieldCurveAnalyzer.SHORT_RATE_PROXIES:
+            return jsonify({"error": f"proxy must be one of {', '.join(YieldCurveAnalyzer.SHORT_RATE_PROXIES)}."}), 400
+        try:
+            horizon = float(request.args.get("horizon", 5))
+            n_paths = int(request.args.get("paths", 200))
+        except ValueError:
+            return jsonify({"error": "horizon and paths must be numeric."}), 400
+        if not 0.5 <= horizon <= 30 or not 10 <= n_paths <= 2000:
+            return jsonify({"error": "horizon must be 0.5-30 years and paths 10-2000."}), 400
+
+        def _compute() -> Dict[str, Any]:
+            analyzer: YieldCurveAnalyzer = app.config["ANALYZER"]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                r = analyzer.short_rate_analysis(
+                    bond_type=bond_type, model=model_id, method=method, proxy=proxy,
+                    start_date=start_date, end_date=end_date, horizon_years=horizon, n_paths=n_paths,
+                )
+            est = r["estimate"]
+            q = r["quantiles"]
+            tp = r["term_premium"]
+            hist = r["history"]
+            return {
+                "bond_type": bond_type,
+                "model": r["model"],
+                "model_name": r["model_name"],
+                "method": method,
+                "proxy": r["proxy"],
+                "as_of": pd.Timestamp(r["as_of"]).strftime("%Y-%m-%d"),
+                "estimate": {
+                    **{k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in est.as_dict().items()},
+                    "kappa": est.kappa,
+                    "theta_pct": est.theta * 100.0,
+                    "sigma_pct": est.sigma * 100.0,
+                    "r0_pct": est.r0 * 100.0,
+                    "half_life_years": est.half_life_years,
+                    "steps_per_year": 1.0 / est.dt if est.dt else None,
+                },
+                "calibrated": {
+                    **_factor_payload(r["calibrated"]),
+                    "rmse_bps": float(r["calibrated"].fit_stats()["rmse"]) * 10000.0,
+                    "r_squared": _json_float(r["calibrated"].fit_stats().get("r_squared")),
+                    "half_life_years": r["calibrated"].half_life(),
+                },
+                "history": {"dates": _dates(hist.index), "values": _series_pct(hist.to_numpy())},
+                "maturities": [float(m) for m in r["maturities"]],
+                "observed": _to_pct(r["observed"]),
+                "fitted": _to_pct(r["fitted"]),
+                "smooth": {
+                    "maturities": [float(m) for m in r["smooth"]["maturities"]],
+                    "fitted": _to_pct(r["smooth"]["fitted"]),
+                    "forward": _to_pct(r["smooth"]["forward"]),
+                    "expectations": _to_pct(r["smooth"]["expectations"]),
+                },
+                "paths": {
+                    "horizons": [float(h) for h in r["horizons"]],
+                    "expected_physical": _to_pct(r["expected_physical"]),
+                    "expected_risk_neutral": _to_pct(r["expected_risk_neutral"]),
+                    **{c: _series_pct(q[c].to_numpy()) for c in q.columns},
+                },
+                "term_premium": {
+                    "maturities": [float(m) for m in tp.index],
+                    "observed": _to_pct(tp["observed"].to_numpy()),
+                    "expected_short_rate": _to_pct(tp["expected_short_rate"].to_numpy()),
+                    "term_premium_bps": [float(v) * 10000.0 for v in tp["term_premium"].to_numpy()],
+                },
+                **_source_info(),
+            }
+
+        try:
+            key = _window_key("short-rate", bond_type, model_id, method, proxy, start_date or "", end_date or "", horizon, n_paths)
+            return jsonify(_cached_result(key, _compute))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Short-rate analysis failed: {exc}"}), 422
+
+    # ------------------------------------------------------------------ #
+    # Term premium
+    # ------------------------------------------------------------------ #
+    @app.get("/api/term-premium")
+    def term_premium() -> Any:
+        """ACM term premia, the Diebold-Li expectations split and EH regressions."""
+        source = (request.args.get("source") or "gsw").lower()
+        start_date = request.args.get("start")
+        end_date = request.args.get("end")
+        dns_method = (request.args.get("dns_method") or "var").lower()
+        if source not in YieldCurveAnalyzer.TERM_PREMIUM_SOURCES:
+            return jsonify({"error": f"source must be one of {', '.join(YieldCurveAnalyzer.TERM_PREMIUM_SOURCES)}."}), 400
+        if dns_method not in METHODS:
+            return jsonify({"error": f"dns_method must be one of {', '.join(METHODS)}."}), 400
+        try:
+            maturities = [float(m) for m in (request.args.get("maturities") or "2,5,10").split(",")]
+            n_factors = int(request.args.get("factors", 3))
+            max_maturity = float(request.args.get("max_maturity", 10))
+        except ValueError:
+            return jsonify({"error": "maturities must be comma-separated numbers; factors an integer."}), 400
+        if not 1 <= n_factors <= 5:
+            return jsonify({"error": "factors must be between 1 and 5."}), 400
+        if not 2 <= max_maturity <= 30 or any(m <= 0 or m > max_maturity for m in maturities) or len(maturities) > 6:
+            return jsonify({"error": "Provide 1-6 maturities within (0, max_maturity]; max_maturity 2-30."}), 400
+
+        def _compute() -> Dict[str, Any]:
+            analyzer: YieldCurveAnalyzer = app.config["ANALYZER"]
+            r = analyzer.term_premium_analysis(
+                source=source, start_date=start_date, end_date=end_date, maturities=maturities,
+                n_factors=n_factors, max_maturity_years=max_maturity, dns_method=dns_method,
+            )
+            decomposition = {}
+            for m, frame in r["decomposition"].items():
+                decomposition[str(m)] = {"dates": _dates(frame.index), **_frame_pct(frame)}
+            dns_block = None
+            if r["dns"] is not None:
+                d = r["dns"]
+                dns_block = {
+                    "dates": _dates(d["fitted"].index),
+                    "fitted": _frame_pct(d["fitted"]),
+                    "expected_short_rate": _frame_pct(d["expected_short_rate"]),
+                    "term_premium": _frame_pct(d["term_premium"]),
+                    "summary": r["dns_summary"],
+                }
+            tp = r["term_premium"]
+            latest = {str(m): float(tp[m].iloc[-1]) * 100.0 for m in tp.columns}
+            return {
+                "source": r["source"],
+                "maturities": r["maturities"],
+                "summary": r["summary"],
+                "term_premium": {"dates": _dates(tp.index), **_frame_pct(tp)},
+                "latest_term_premium": latest,
+                "decomposition": decomposition,
+                "dns": dns_block,
+                "regressions": r["regressions"],
+                **_source_info(),
+            }
+
+        try:
+            key = _window_key("term-premium", source, start_date or "", end_date or "", tuple(maturities), n_factors, max_maturity, dns_method)
+            return jsonify(_cached_result(key, _compute))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Term premium analysis failed: {exc}"}), 422
+
+    # ------------------------------------------------------------------ #
+    # Curve analytics and bond calculator
+    # ------------------------------------------------------------------ #
+    @app.get("/api/analytics")
+    def analytics() -> Any:
+        """Carry & roll-down, forwards, spreads, rich/cheap, curve changes and PCA for the latest curve."""
+        bond_type = request.args.get("bond_type", "treasury").lower()
+        model_id = request.args.get("model") or "nelson-siegel"
+        if bond_type not in {"treasury", "tips"}:
+            return jsonify({"error": "bond_type must be 'treasury' or 'tips'."}), 400
+        try:
+            get_any_model_class(model_id)
+            horizon = float(request.args.get("horizon", 1.0))
+            lookback = int(request.args.get("lookback", 365))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not 0.05 <= horizon <= 10 or not 30 <= lookback <= 3650:
+            return jsonify({"error": "horizon must be 0.05-10 years, lookback 30-3650 days."}), 400
+
+        def _compute() -> Dict[str, Any]:
+            analyzer: YieldCurveAnalyzer = app.config["ANALYZER"]
+            r = analyzer.curve_analytics(bond_type=bond_type, model=model_id, horizon=horizon, lookback_days=lookback)
+            cr = r["carry_roll_down"]
+            fw = r["forwards"]
+            rc = r["rich_cheap"]
+            ch = r["changes"]
+            sh = r["spread_history"]
+            pca = r["pca"]
+            return {
+                "bond_type": bond_type,
+                "model": r["model"],
+                "as_of": pd.Timestamp(r["as_of"]).strftime("%Y-%m-%d"),
+                "horizon": horizon,
+                "maturities": [float(m) for m in r["maturities"]],
+                "observed": _to_pct(r["observed"]),
+                **{k: v for k, v in _factor_payload(r["curve"]).items() if k in {"factors", "factor_list", "model_name", "family"}},
+                "carry_roll_down": {
+                    "maturities": [float(m) for m in cr.index],
+                    "yield": _to_pct(cr["yield"].to_numpy()),
+                    "horizon_yield": _to_pct(cr["horizon_yield"].to_numpy()),
+                    "forward_yield": _to_pct(cr["forward_yield"].to_numpy()),
+                    "carry_bps": [float(v) for v in cr["carry_bps"]],
+                    "roll_down_bps": [float(v) for v in cr["roll_down_bps"]],
+                    "total_bps": [float(v) for v in cr["total_bps"]],
+                },
+                "forwards": [
+                    {
+                        "label": str(label),
+                        "start": float(row["start"]),
+                        "tenor": float(row["tenor"]),
+                        "forward": float(row["forward"]) * 100.0,
+                        "spot_to_end": float(row["spot_to_end"]) * 100.0,
+                        "spread_vs_spot_bps": float(row["spread_vs_spot_bps"]),
+                    }
+                    for label, row in fw.iterrows()
+                ],
+                "spreads": {str(k): float(v) for k, v in r["spreads"].items()},
+                "spread_history": {"dates": _dates(sh.index), **{str(c): [_json_float(v) for v in sh[c]] for c in sh.columns}},
+                "rich_cheap": [
+                    {
+                        "maturity": float(m),
+                        "observed": float(row["observed"]) * 100.0,
+                        "fitted": float(row["fitted"]) * 100.0,
+                        "residual_bps": float(row["residual_bps"]),
+                        "z": _json_float(row["z"]),
+                        "verdict": str(row["verdict"]),
+                        "rank": int(row["rank"]),
+                    }
+                    for m, row in rc.iterrows()
+                ],
+                "changes": {
+                    "as_of": pd.Timestamp(ch.attrs["as_of"]).strftime("%Y-%m-%d"),
+                    "maturities": [float(m) for m in ch.index],
+                    "yield": _to_pct(ch["yield"].to_numpy()),
+                    **{c: [_json_float(v) for v in ch[c]] for c in ch.columns if c.startswith("chg_")},
+                },
+                "pca": None if pca is None else {
+                    "explained_variance": pca["explained_variance"],
+                    "maturities": [float(m) for m in pca["loadings"].index],
+                    "loadings": {str(c): [float(v) for v in pca["loadings"][c]] for c in pca["loadings"].columns},
+                    "n_obs": pca["n_obs"],
+                },
+                **_source_info(),
+            }
+
+        try:
+            key = _window_key("analytics", bond_type, model_id, horizon, lookback, pd.Timestamp.today().strftime("%Y-%m-%d"))
+            return jsonify(_cached_result(key, _compute))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Curve analytics failed: {exc}"}), 422
+
+    @app.post("/api/bond")
+    def bond_calculator() -> Any:
+        """Price and risk a fixed-coupon bond off the fitted curve (optionally from custom quotes)."""
+        payload = request.get_json(silent=True) or {}
+        bond_type = (payload.get("bond_type") or "treasury").lower()
+        model_id = payload.get("model") or "nelson-siegel"
+        try:
+            bond = Bond(
+                maturity=float(payload.get("maturity", 10)),
+                coupon=float(payload.get("coupon", 0.0)) / 100.0,
+                frequency=int(payload.get("frequency", 2)),
+                face=float(payload.get("face", 100.0)),
+            )
+            price = payload.get("price")
+            price = float(price) if price not in (None, "") else None
+            get_any_model_class(model_id)
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": f"Invalid bond specification: {exc}"}), 400
+        if bond.maturity > 100:
+            return jsonify({"error": "maturity must be at most 100 years."}), 400
+        maturities = yields = None
+        points = payload.get("points")
+        if points:
+            try:
+                maturities = [float(p["maturity"]) for p in points]
+                yields = [float(p["yield"]) / 100.0 for p in points]
+            except (KeyError, TypeError, ValueError) as exc:
+                return jsonify({"error": f"Invalid points: {exc}"}), 400
+        try:
+            analyzer: YieldCurveAnalyzer = app.config["ANALYZER"]
+            r = analyzer.bond_analytics(bond, bond_type=bond_type, model=model_id, price=price, maturities=maturities, yields=yields)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+        krd = r["key_rate_durations"]
+        times, amounts = r["cash_flows"]
+        return jsonify(
+            {
+                "bond": {"maturity": bond.maturity, "coupon": bond.coupon * 100.0, "frequency": bond.frequency, "face": bond.face},
+                "bond_type": bond_type,
+                "model": r["model"],
+                "as_of": pd.Timestamp(r["as_of"]).strftime("%Y-%m-%d") if r["as_of"] is not None else None,
+                "model_price": float(r["model_price"]),
+                "market_price": float(r["market_price"]),
+                "ytm": float(r["ytm"]) * 100.0,
+                "model_ytm": float(r["model_ytm"]) * 100.0,
+                "z_spread_bps": float(r["z_spread"]) * 10000.0,
+                "macaulay_duration": float(r["macaulay_duration"]),
+                "modified_duration": float(r["modified_duration"]),
+                "convexity": float(r["convexity"]),
+                "dv01": float(r["dv01"]),
+                "key_rate_durations": {"tenors": [float(k) for k in krd.index], "values": [float(v) for v in krd]},
+                "cash_flows": {"times": [float(t) for t in times], "amounts": [float(a) for a in amounts]},
+                **_source_info(),
             }
         )
 

@@ -44,7 +44,7 @@ class FactorMeta(NamedTuple):
     key: str  #: parameter name as in ``parameters``
     label: str  #: human label used by ``get_factors``
     symbol: str  #: short mathematical symbol for UIs
-    unit: str  #: ``"rate"`` (same units as the yields) or ``"years"``
+    unit: str  #: ``"rate"`` (same units as the yields), ``"years"`` or ``"per-year"``
     hint: str  #: one-line interpretation
 
 
@@ -116,6 +116,9 @@ class NelsonSiegelModel:
     #: Identifier used by the model registry and the REST API.
     model_id: str = "nelson-siegel"
     display_name: str = "Nelson-Siegel"
+    #: Model family: ``"parametric"`` curves are linear in their betas and
+    #: support vectorised factor histories; ``"short-rate"`` models do not.
+    family: str = "parametric"
     #: Ordered parameter names. Linear (beta) parameters first, decays last.
     param_names: Tuple[str, ...] = ("beta0", "beta1", "beta2", "tau")
     #: Number of leading parameters that enter linearly.
@@ -192,8 +195,10 @@ class NelsonSiegelModel:
         return {
             "id": cls.model_id,
             "name": cls.display_name,
+            "family": cls.family,
             "n_params": len(cls.param_names),
             "min_points": len(cls.param_names),
+            "supports_history": True,
             "factors": [meta._asdict() for meta in cls.factor_meta()],
         }
 
