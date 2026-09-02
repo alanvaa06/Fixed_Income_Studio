@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Launch the Nelson-Siegel Studio web UI.
+Launch the Fixed Income Studio web UI.
 
 Usage
 -----
@@ -10,8 +10,12 @@ Usage
 
 Environment variables
 ---------------------
-    FRED_API_KEY    Optional. If set, the app uses live FRED data; otherwise
-                    realistic synthetic data is generated for demos.
+    FRED_API_KEY               Optional. With a key the Treasury, TIPS and fed
+                               funds series come from the FRED API.
+    NELSON_SIEGEL_PUBLIC_DATA  Default 1: without a key, read treasury.gov, FRED's
+                               public CSV export and the Fed's GSW zero curve.
+    NELSON_SIEGEL_OFFLINE      Set to 1 to disable all network access (synthetic data).
+    NELSON_SIEGEL_CACHE_DIR    Where the GSW table is cached (default ~/.cache/nelson_siegel).
 """
 
 import argparse

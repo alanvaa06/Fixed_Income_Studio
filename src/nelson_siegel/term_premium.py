@@ -26,9 +26,8 @@ in years unless a name says ``months``.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple, Type
+from typing import Dict, Optional, Sequence, Tuple, Type
 
 import numpy as np
 import pandas as pd

@@ -27,7 +27,7 @@ Rates are decimals; ``*_bps`` helpers convert to basis points.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
