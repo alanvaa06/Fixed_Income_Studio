@@ -29,7 +29,7 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 from ..analysis import YieldCurveAnalyzer
 from ..dynamic import METHODS, DynamicNelsonSiegel, backtest
-from ..model import NelsonSiegelModel, SvenssonModel, list_models, make_model
+from ..model import NelsonSiegelModel, SvenssonModel, get_model_class, list_models, make_model
 from ._factors_cache import FactorsCache
 from .warmup import cancel_warmup, start_warmup
 
@@ -117,22 +117,26 @@ def create_app(
         static_folder="static",
     )
 
-    def _cache_key(bond_type: str, start_date: Optional[str], end_date: Optional[str]) -> tuple:
+    def _cache_key(
+        bond_type: str, start_date: Optional[str], end_date: Optional[str], model_id: str
+    ) -> tuple:
         return (
             bond_type.lower(),
             start_date or "",
             end_date or "",
             "auto_weekly_over_1y",
             bool(app.config["FRED_KEY_PRESENT"]),
+            model_id,
         )
 
     def _get_cached_factors(
         bond_type: str,
         start_date: Optional[str],
         end_date: Optional[str],
+        model_id: str = "nelson-siegel",
     ) -> pd.DataFrame:
         cache: FactorsCache = app.config["FACTORS_CACHE"]
-        key = _cache_key(bond_type, start_date, end_date)
+        key = _cache_key(bond_type, start_date, end_date, model_id)
 
         def _compute() -> pd.DataFrame:
             analyzer = app.config["ANALYZER"]
@@ -140,9 +144,25 @@ def create_app(
                 bond_type=bond_type,
                 start_date=start_date,
                 end_date=end_date,
+                model=model_id,
             )
 
         return cache.get_or_compute(key, _compute)
+
+    def _factor_series(factors: pd.DataFrame, model_cls: type) -> Dict[str, Any]:
+        """Generic per-factor series: rates in percent, decays in years."""
+        series: Dict[str, List[float]] = {}
+        meta = []
+        for m in model_cls.factor_meta():
+            if m.label not in factors.columns:
+                continue
+            scale = 100.0 if m.unit == "rate" else 1.0
+            series[m.label] = (factors[m.label].astype(float) * scale).tolist()
+            meta.append(m._asdict())
+        return {"series": series, "factor_meta": meta}
+
+    def _parse_model(default: str = "nelson-siegel") -> type:
+        return get_model_class(request.args.get("model") or default)
 
     def configure_data_source(api_key: Optional[str]) -> None:
         normalized_key = api_key.strip() if api_key else None
@@ -392,12 +412,17 @@ def create_app(
 
         if bond_type not in {"treasury", "tips"}:
             return jsonify({"error": "bond_type must be 'treasury' or 'tips'."}), 400
+        try:
+            model_cls = _parse_model()
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         try:
             factors = _get_cached_factors(
                 bond_type=bond_type,
                 start_date=start_date,
                 end_date=end_date,
+                model_id=model_cls.model_id,
             )
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc)}), 422
@@ -416,14 +441,18 @@ def create_app(
             rmse_bps = factors["RMSE"].astype(float) * 10000.0
         else:
             rmse_bps = pd.Series(np.nan, index=factors.index)
+        decay_cols = [m.label for m in model_cls.factor_meta() if m.unit == "years"]
         return jsonify(
             {
                 "bond_type": bond_type,
+                "model": model_cls.model_id,
+                "model_name": model_cls.display_name,
                 "dates": [d.strftime("%Y-%m-%d") for d in factors.index],
                 "level": level.tolist(),
                 "slope": slope.tolist(),
                 "curvature": curvature.tolist(),
                 "tau": tau.tolist(),
+                **_factor_series(factors, model_cls),
                 "rmse_bps": [None if np.isnan(v) else float(v) for v in rmse_bps],
                 "is_synthetic": not app.config["FRED_KEY_PRESENT"],
                 "summary": {
@@ -434,6 +463,7 @@ def create_app(
                     "slope_mean": float(slope.mean()),
                     "curvature_mean": float(curvature.mean()),
                     "tau": float(tau.iloc[0]),
+                    "decays": {c: float(factors[c].iloc[0]) for c in decay_cols},
                     "rmse_bps_mean": None if rmse_bps.isna().all() else float(rmse_bps.mean()),
                 },
             }
@@ -456,15 +486,19 @@ def create_app(
             return jsonify({"error": "horizon must be an integer."}), 400
         if not 1 <= horizon <= 520:
             return jsonify({"error": "horizon must be between 1 and 520 steps."}), 400
+        try:
+            model_cls = _parse_model()
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         try:
-            factors = _get_cached_factors(bond_type, start_date, end_date)
+            factors = _get_cached_factors(bond_type, start_date, end_date, model_cls.model_id)
             analyzer = app.config["ANALYZER"]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 result = analyzer.forecast_factors(
                     bond_type, horizon=horizon, method=method, start_date=start_date,
-                    end_date=end_date, factors=factors,
+                    end_date=end_date, factors=factors, model=model_cls.model_id,
                 )
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc)}), 422
@@ -480,11 +514,17 @@ def create_app(
             return [float(v) * 100.0 for v in fc[name]]
 
         summary = result["summary"]
+        rate_labels = list(dns.factor_names_)
         return jsonify(
             {
                 "bond_type": bond_type,
+                "model": model_cls.model_id,
+                "model_name": model_cls.display_name,
                 "method": method,
                 "horizon": horizon,
+                "factor_names": rate_labels,
+                "series": {name: series(name) for name in rate_labels},
+                "series_std": {name: series(f"{name}_std") for name in rate_labels},
                 "dates": [d.strftime("%Y-%m-%d") for d in fc.index],
                 "level": series("Level"),
                 "slope": series("Slope"),
@@ -528,16 +568,28 @@ def create_app(
             return jsonify({"error": "horizons must be comma-separated integers."}), 400
         if any(h < 1 for h in horizons) or len(horizons) > 6:
             return jsonify({"error": "Provide 1-6 positive horizons."}), 400
+        try:
+            model_cls = _parse_model()
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         try:
-            factors = _get_cached_factors(bond_type, start_date, end_date)
-            maturities = [float(m) for m in app.config["DATA_MANAGER"].get_treasury_data(start_date, end_date).columns] \
-                if bond_type == "treasury" else \
-                [float(m) for m in app.config["DATA_MANAGER"].get_tips_data(start_date, end_date).columns]
-            table = backtest(factors, horizons=horizons, min_train=min_train, maturities=maturities)
+            factors = _get_cached_factors(bond_type, start_date, end_date, model_cls.model_id)
+            data_manager = app.config["DATA_MANAGER"]
+            data = (
+                data_manager.get_treasury_data(start_date, end_date)
+                if bond_type == "treasury"
+                else data_manager.get_tips_data(start_date, end_date)
+            )
+            maturities = [float(m) for m in data.columns]
+            table = backtest(
+                factors, horizons=horizons, min_train=min_train, maturities=maturities,
+                model_cls=model_cls,
+            )
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc)}), 422
 
+        rate_labels = [m.label for m in model_cls.factor_meta() if m.unit == "rate"]
         rows = []
         for (method, horizon), row in table.iterrows():
             rows.append(
@@ -548,12 +600,16 @@ def create_app(
                     "level_rmse_bps": float(row["Level_rmse"]) * 10000.0,
                     "slope_rmse_bps": float(row["Slope_rmse"]) * 10000.0,
                     "curvature_rmse_bps": float(row["Curvature_rmse"]) * 10000.0,
+                    "factor_rmse_bps": {
+                        name: float(row[f"{name}_rmse"]) * 10000.0 for name in rate_labels
+                    },
                     "yield_rmse_bps": float(row["yield_rmse"]) * 10000.0,
                 }
             )
         return jsonify(
             {
                 "bond_type": bond_type,
+                "model": model_cls.model_id,
                 "horizons": list(horizons),
                 "min_train": min_train,
                 "rows": rows,

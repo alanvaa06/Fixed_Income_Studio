@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import itertools
 import warnings
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Type, Union
+from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
 from scipy.optimize import OptimizeWarning, curve_fit, minimize, minimize_scalar
@@ -330,39 +330,50 @@ class NelsonSiegelModel:
         betas, sse = _ols(X, yields)
         return sse, betas
 
-    def _fit_profile(
-        self, maturities: np.ndarray, yields: np.ndarray
-    ) -> Tuple[np.ndarray, Tuple[float, ...], float]:
-        """Grid search over decays with closed-form betas, then local refinement.
+    def search_decays(
+        self,
+        objective: Callable[[Tuple[float, ...]], float],
+        grids: List[np.ndarray],
+    ) -> Tuple[Tuple[float, ...], float]:
+        """Minimise ``objective(decays)`` over the decay grid(s), then refine locally.
 
-        The profile SSE can have several shallow local minima when a curve is
-        nearly flat (curvature weakly identified), so the best few grid
-        candidates are each refined and the lowest SSE wins.
+        The objective can have several shallow local minima (e.g. a nearly flat
+        curve, or a pooled panel loss), so the best few grid candidates are
+        each refined and the lowest value wins. Used by :meth:`fit` with a
+        single-curve SSE and by the analyzer with a pooled panel SSE.
         """
-        grids = self._decay_grids(maturities)
         shape = tuple(len(g) for g in grids)
         losses = np.full(shape, np.inf)
         for idx in itertools.product(*(range(n) for n in shape)):
             decays = tuple(float(g[i]) for g, i in zip(grids, idx))
             if not self._decays_admissible(decays):
                 continue
-            losses[idx] = self._profile_sse(maturities, yields, decays)[0]
+            losses[idx] = objective(decays)
         if not np.isfinite(losses).any():
             raise ValueError("No admissible decay parameters found in the search grid")
 
-        candidates = self._candidate_indices(losses)
-        best: Optional[Tuple[float, Tuple[float, ...], np.ndarray]] = None
-        for idx in candidates:
-            decays = self._refine_decays(maturities, yields, grids, idx)
-            sse, betas = self._profile_sse(maturities, yields, decays)
-            grid_decays = tuple(float(g[i]) for g, i in zip(grids, idx))
-            if sse > losses[idx]:  # refinement must never be worse than its start
-                decays = grid_decays
-                sse, betas = self._profile_sse(maturities, yields, decays)
-            if best is None or sse < best[0]:
-                best = (sse, decays, betas)
+        best: Optional[Tuple[float, Tuple[float, ...]]] = None
+        for idx in self._candidate_indices(losses):
+            decays = self._refine_decays(objective, grids, idx)
+            value = objective(decays)
+            if value > losses[idx]:  # refinement must never be worse than its start
+                decays = tuple(float(g[i]) for g, i in zip(grids, idx))
+                value = float(losses[idx])
+            if best is None or value < best[0]:
+                best = (value, decays)
         assert best is not None
-        return best[2], best[1], best[0]
+        return best[1], best[0]
+
+    def _fit_profile(
+        self, maturities: np.ndarray, yields: np.ndarray
+    ) -> Tuple[np.ndarray, Tuple[float, ...], float]:
+        """Grid search over decays with closed-form betas, then local refinement."""
+        grids = self._decay_grids(maturities)
+        decays, sse = self.search_decays(
+            lambda d: self._profile_sse(maturities, yields, d)[0], grids
+        )
+        _, betas = self._profile_sse(maturities, yields, decays)
+        return betas, decays, sse
 
     @staticmethod
     def _candidate_indices(losses: np.ndarray, max_candidates: int = 3) -> List[Tuple[int, ...]]:
@@ -392,8 +403,7 @@ class NelsonSiegelModel:
 
     def _refine_decays(
         self,
-        maturities: np.ndarray,
-        yields: np.ndarray,
+        objective: Callable[[Tuple[float, ...]], float],
         grids: List[np.ndarray],
         best_idx: Tuple[int, ...],
     ) -> Tuple[float, ...]:
@@ -405,7 +415,7 @@ class NelsonSiegelModel:
             if hi <= lo:
                 return (lo,)
             res = minimize_scalar(
-                lambda t: self._profile_sse(maturities, yields, (t,))[0],
+                lambda t: objective((float(t),)),
                 bounds=(lo, hi),
                 method="bounded",
                 options={"xatol": 1e-6},
@@ -418,14 +428,14 @@ class NelsonSiegelModel:
         log_hi = np.log([float(g[-1]) for g in grids])
         x0 = np.log([g[i] for g, i in zip(grids, best_idx)])
 
-        def objective(x: np.ndarray) -> float:
-            decays = tuple(np.exp(np.clip(x, log_lo, log_hi)))
+        def penalised(x: np.ndarray) -> float:
+            decays = tuple(float(v) for v in np.exp(np.clip(x, log_lo, log_hi)))
             if not self._decays_admissible(decays):
                 return np.inf
-            return self._profile_sse(maturities, yields, decays)[0]
+            return objective(decays)
 
         res = minimize(
-            objective,
+            penalised,
             x0,
             method="Nelder-Mead",
             options={"xatol": 1e-5, "fatol": 0, "maxiter": 600},

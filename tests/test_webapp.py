@@ -358,3 +358,29 @@ def test_backtest_endpoint_reports_three_methods():
     assert sorted({row["method"] for row in rows}) == ["ar", "rw", "var"]
     assert all(row["yield_rmse_bps"] >= 0 for row in rows) and len(rows) == 6
     assert bad.status_code == 400
+
+
+def test_historical_endpoint_supports_svensson_series():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        ns = client.get("/api/historical?bond_type=treasury&start=2024-01-01&end=2025-12-31").get_json()
+        sv = client.get("/api/historical?bond_type=treasury&start=2024-01-01&end=2025-12-31&model=svensson").get_json()
+        bad = client.get("/api/historical?bond_type=treasury&model=spline")
+    assert ns["model"] == "nelson-siegel" and set(ns["series"]) == {"Level", "Slope", "Curvature", "Tau"}
+    assert sv["model"] == "svensson" and "Curvature2" in sv["series"] and "Tau2" in sv["summary"]["decays"]
+    assert len(sv["series"]["Curvature2"]) == len(sv["dates"])
+    assert sv["summary"]["rmse_bps_mean"] <= ns["summary"]["rmse_bps_mean"] + 1e-9
+    assert bad.status_code == 400
+
+
+def test_forecast_and_backtest_accept_model():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        fc = client.get("/api/forecast?bond_type=treasury&start=2022-01-01&end=2025-12-31&horizon=4&model=svensson")
+        bt = client.get("/api/backtest?bond_type=treasury&start=2022-01-01&end=2025-12-31&horizons=1&min_train=60&model=svensson")
+    assert fc.status_code == 200, fc.get_json()
+    j = fc.get_json()
+    assert j["factor_names"] == ["Level", "Slope", "Curvature", "Curvature2"]
+    assert len(j["series"]["Curvature2"]) == 4 and len(j["series_std"]["Curvature2"]) == 4
+    assert bt.status_code == 200, bt.get_json()
+    assert "Curvature2" in bt.get_json()["rows"][0]["factor_rmse_bps"]

@@ -107,10 +107,10 @@ All endpoints are JSON. Yields are returned in **percent** (e.g. `4.25`), maturi
 | `POST /api/fit` | Fit a model to user-supplied (maturity, yield) points. Body: `points`, `bond_type`, optional `model` (`nelson-siegel` default, or `svensson`). Returns a generic `factor_list`, RMSE, R² and the forward curve. |
 | `POST /api/curve` | Evaluate the NS function at custom parameters (no fit); pass `beta3` and `tau2` to evaluate Svensson |
 | `GET  /api/snapshot?bond_type=treasury\|tips&model=...` | Latest available curve + fitted factors |
-| `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD` | Factor history (daily up to one year, weekly beyond) with per-date fit RMSE |
+| `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD&model=nelson-siegel\|svensson` | Factor history (daily up to one year, weekly beyond) with per-date fit RMSE; generic `series` keyed by factor label |
 | `GET  /api/compare?start=...&end=...` | Treasury vs TIPS factor history + breakevens |
-| `GET  /api/forecast?bond_type=...&start=...&end=...&horizon=12&method=ar\|var\|rw` | Diebold-Li factor forecast with error bands, current vs forecast curve, persistence and half-lives |
-| `GET  /api/backtest?bond_type=...&start=...&end=...&horizons=1,4,12&min_train=52` | Expanding-window out-of-sample RMSE (factors and yields) for random walk, AR(1), VAR(1) |
+| `GET  /api/forecast?bond_type=...&start=...&end=...&horizon=12&method=ar\|var\|rw&model=...` | Diebold-Li factor forecast with error bands, current vs forecast curve, persistence and half-lives |
+| `GET  /api/backtest?bond_type=...&start=...&end=...&horizons=1,4,12&min_train=52&model=...` | Expanding-window out-of-sample RMSE (factors and yields) for random walk, AR(1), VAR(1) |
 
 ### Example: fit a curve via curl
 
@@ -194,7 +194,7 @@ Fitting notes:
 
 - `fit()` profiles the sum of squared errors over &tau; on a log-spaced grid, solves &beta;<sub>0..2</sub> in closed form at each point, and refines the best local minima with a bounded search. It is deterministic and never worse (in SSE) than the legacy `curve_fit` path.
 - &tau; is searched only where the curvature hump (&asymp; 1.8&tau;) falls inside the observed maturity range, which prevents the collinear blow-ups that otherwise appear on long-only curves. `fit_stats()["decay_at_bound"]` tells you when that constraint binds; set `model.hump_location_factor = None` to disable it.
-- Historical factors follow the Diebold-Li convention: one &tau; per bond type, estimated on a sample of up to 48 curves, then a vectorised least-squares solve per date. Ranges longer than a year are resampled to weekly.
+- Historical factors follow the Diebold-Li convention: one decay set per (bond type, model), estimated on a sample of up to 48 curves, then a vectorised least-squares solve per date. Ranges longer than a year are resampled to weekly. Pass `model="svensson"` to `analyze_historical_factors`, `forecast_factors` or `backtest_factor_forecasts` for a two-hump history (needs at least six tenors per date).
 - Downloads are memoised per date window on each downloader; call `analyzer.data_manager.clear_cache()` to refetch.
 
 ## Jupyter notebook

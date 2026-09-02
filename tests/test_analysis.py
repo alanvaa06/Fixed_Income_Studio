@@ -3,6 +3,7 @@
 import time
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from nelson_siegel.analysis import YieldCurveAnalyzer
@@ -210,3 +211,74 @@ def test_analyze_historical_factors_speed_under_one_second():
 
     assert len(factors) > 100
     assert elapsed < 2.0  # generous bound; real run is well under 1s
+
+
+# --- model-generic historical path -------------------------------------------
+
+def _svensson_frame(n_dates: int, decays=(1.3, 7.0), seed: int = 3) -> pd.DataFrame:
+    from nelson_siegel.model import SvenssonModel
+
+    rng = np.random.default_rng(seed)
+    maturities = np.array([0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0])
+    dates = pd.date_range("2020-01-03", periods=n_dates, freq="W-FRI")
+    rows = []
+    for i in range(n_dates):
+        b = (0.03 + 0.005 * np.sin(i / 20), -0.012 + 0.002 * np.cos(i / 15),
+             0.01 + 0.002 * rng.standard_normal(), -0.008 + 0.002 * rng.standard_normal())
+        rows.append(SvenssonModel.model_function(maturities, *b, *decays))
+    return pd.DataFrame(np.vstack(rows), index=dates, columns=maturities)
+
+
+def test_batch_fit_factors_svensson_columns_and_exactness():
+    from nelson_siegel.model import SvenssonModel
+
+    frame = _svensson_frame(30)
+    batch = YieldCurveAnalyzer._batch_fit_factors(frame, model_cls=SvenssonModel, decays=(1.3, 7.0))
+    assert list(batch.columns) == ["Level", "Slope", "Curvature", "Curvature2", "Tau", "Tau2", "RMSE"]
+    assert (batch["RMSE"] < 1e-9).all()
+    assert (batch["Tau2"] == 7.0).all()
+    with pytest.raises(ValueError, match="needs 2 decay"):
+        YieldCurveAnalyzer._batch_fit_factors(frame, model_cls=SvenssonModel, decays=(1.3,))
+    with pytest.raises(ValueError, match="Provide tau"):
+        YieldCurveAnalyzer._batch_fit_factors(frame)
+
+
+def test_panel_profile_decays_recovers_svensson_pair():
+    from nelson_siegel.model import SvenssonModel
+
+    frame = _svensson_frame(40)
+    decays = YieldCurveAnalyzer._panel_profile_decays(frame, SvenssonModel())
+    assert np.allclose(decays, (1.3, 7.0), rtol=0.02)
+
+
+def test_analyze_historical_factors_supports_svensson(monkeypatch):
+    analyzer = YieldCurveAnalyzer()
+    frame = _svensson_frame(80)
+    monkeypatch.setattr(analyzer.data_manager, "get_treasury_data", lambda *a, **k: frame)
+
+    svensson = analyzer.analyze_historical_factors("treasury", model="svensson")
+    ns = analyzer.analyze_historical_factors("treasury")
+
+    assert "Curvature2" in svensson.columns and "Tau2" in svensson.columns
+    assert "Curvature2" not in ns.columns
+    assert svensson["RMSE"].mean() < ns["RMSE"].mean()  # Svensson nests NS
+    assert set(analyzer._global_decays) == {("treasury", "svensson"), ("treasury", "nelson-siegel")}
+    assert analyzer._global_tau["treasury"] == analyzer._global_decays[("treasury", "nelson-siegel")][0]
+    with pytest.raises(ValueError, match="Unknown model"):
+        analyzer.analyze_historical_factors("treasury", model="spline")
+
+
+def test_forecast_factors_with_svensson_model(monkeypatch):
+    analyzer = YieldCurveAnalyzer()
+    frame = _svensson_frame(120)
+    monkeypatch.setattr(analyzer.data_manager, "get_treasury_data", lambda *a, **k: frame)
+    result = analyzer.forecast_factors("treasury", horizon=6, method="ar", model="svensson")
+    assert "Curvature2" in result["forecast"].columns
+    assert result["summary"]["model"] == "svensson"
+    assert result["curves"].shape == (6, frame.shape[1])
+
+
+def test_analyze_historical_factors_rejects_models_needing_more_tenors():
+    analyzer = YieldCurveAnalyzer()  # synthetic TIPS: five tenors, Svensson needs six
+    with pytest.raises(ValueError, match="at least 6 tenors"):
+        analyzer.analyze_historical_factors("tips", "2024-01-01", "2024-12-31", model="svensson")

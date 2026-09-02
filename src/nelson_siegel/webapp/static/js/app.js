@@ -64,6 +64,7 @@
     model: "nelson-siegel",
     labModel: "nelson-siegel",
     histBondType: "treasury",
+    histModel: "nelson-siegel",
     histRange: "1",
     cmpRange: "1",
     showForward: false,
@@ -83,10 +84,10 @@
   state.models = {};
   function saveSettings() {
     try {
-      const { bondType, model, labModel, histBondType, histRange, cmpRange, showForward } = state;
+      const { bondType, model, labModel, histBondType, histModel, histRange, cmpRange, showForward } = state;
       window.localStorage.setItem(
         SETTINGS_KEY,
-        JSON.stringify({ bondType, model, labModel, histBondType, histRange, cmpRange, showForward })
+        JSON.stringify({ bondType, model, labModel, histBondType, histModel, histRange, cmpRange, showForward })
       );
     } catch (_) { /* private mode etc. */ }
   }
@@ -620,6 +621,21 @@
     });
   });
 
+  $$('.seg-btn[data-hist-model]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setSegmented($$('.seg-btn[data-hist-model]'), btn);
+      state.histModel = btn.dataset.histModel;
+      saveSettings();
+    });
+  });
+
+  const FACTOR_COLORS = { Level: COLOR.treasury, Slope: COLOR.tips, Curvature: COLOR.purple, Curvature2: "#f472b6" };
+  const FACTOR_SYMBOL = { Level: "β₀", Slope: "β₁", Curvature: "β₂", Curvature2: "β₃" };
+  function rateFactorNames(j) {
+    if (j.factor_meta) return j.factor_meta.filter((m) => m.unit === "rate").map((m) => m.label);
+    return ["Level", "Slope", "Curvature"];
+  }
+
   function applyHistRange(years) {
     const { start, end } = rangeDates(years);
     $("#hist-start").value = start;
@@ -635,11 +651,7 @@
 
   $("#btn-hist-run").addEventListener("click", async () => {
     const btn = $("#btn-hist-run");
-    const params = new URLSearchParams({
-      bond_type: state.histBondType,
-      start: $("#hist-start").value,
-      end: $("#hist-end").value,
-    });
+    const params = histParams();
     setBusy(btn, true, "Computing…");
     try {
       const r = await fetch(`/api/historical?${params.toString()}`);
@@ -647,11 +659,10 @@
       if (!r.ok) throw new Error(j.error || "Historical request failed.");
       state.lastHist = j;
 
-      const traces = [
-        { x: j.dates, y: j.level, name: "Level (β₀)", line: { color: COLOR.treasury, width: 2 }, mode: "lines" },
-        { x: j.dates, y: j.slope, name: "Slope (β₁)", line: { color: COLOR.tips, width: 2 }, mode: "lines" },
-        { x: j.dates, y: j.curvature, name: "Curvature (β₂)", line: { color: COLOR.purple, width: 2 }, mode: "lines" },
-      ];
+      const traces = rateFactorNames(j).map((name) => ({
+        x: j.dates, y: (j.series && j.series[name]) || [], name: `${name} (${FACTOR_SYMBOL[name] || ""})`,
+        line: { color: FACTOR_COLORS[name] || COLOR.obs, width: 2 }, mode: "lines",
+      }));
       plot("chart-historical", traces, layoutWith("Date", "Factor (%)"));
 
       if (j.rmse_bps) {
@@ -664,10 +675,13 @@
 
       $("#h-level").textContent = fmt(j.summary.level_mean, 2, " %");
       $("#h-slope").textContent = fmt(j.summary.slope_mean, 2, " %");
-      $("#h-tau").textContent = fmt(j.summary.tau, 2, " y");
+      const decays = j.summary.decays || { Tau: j.summary.tau };
+      $("#h-tau").textContent = Object.values(decays).map((v) => fmt(v, 2)).join(" / ") + " y";
+      $("#h-tau-label").innerHTML = Object.keys(decays).length > 1
+        ? '<span class="sym">τ₁ / τ₂</span> (panel)' : '<span class="sym">τ</span> (panel)';
       $("#h-rmse").textContent = fmt(j.summary.rmse_bps_mean, 1, " bps");
       $("#h-obs").textContent = j.summary.n_observations.toLocaleString();
-      $("#hist-range").textContent = `${j.summary.start} → ${j.summary.end}${j.is_synthetic ? " · synthetic data" : ""}`;
+      $("#hist-range").textContent = `${j.model_name || "Nelson-Siegel"} · ${j.summary.start} → ${j.summary.end}${j.is_synthetic ? " · synthetic data" : ""}`;
       $("#btn-hist-export").disabled = false;
       $("#btn-fc-run").disabled = false;
       $("#btn-bt-run").disabled = false;
@@ -698,6 +712,7 @@
   function histParams() {
     return new URLSearchParams({
       bond_type: state.histBondType,
+      model: state.histModel,
       start: $("#hist-start").value,
       end: $("#hist-end").value,
     });
@@ -719,7 +734,10 @@
       if (v != null) return `${v.toFixed(1)} ${stepLabel}`;
       return rho >= 1 ? "∞ (unit root)" : "n/a";
     };
-    ["Level", "Slope", "Curvature"].forEach((name) => {
+    const names = j.factor_names || ["Level", "Slope", "Curvature"];
+    host.classList.toggle("grid-5", names.length > 3);
+    host.classList.toggle("grid-4", names.length <= 3);
+    names.forEach((name) => {
       const rho = s.persistence[name];
       tile(`${name} half-life`, fmtHl(hl[name], rho),
         rho <= 0 ? `persistence ${fmt(rho, 3)} · no mean reversion to speak of` : `persistence ${fmt(rho, 3)}`);
@@ -731,27 +749,30 @@
 
   function plotForecast(j) {
     const h = state.lastHist;
-    const band = (name, color) => {
-      const y = j[name], sd = j[name + "_std"];
-      const upper = y.map((v, i) => v + 1.645 * sd[i]);
-      const lower = y.map((v, i) => v - 1.645 * sd[i]);
-      return [
-        { x: j.dates.concat(j.dates.slice().reverse()), y: upper.concat(lower.slice().reverse()),
-          fill: "toself", fillcolor: color.replace(")", ", 0.12)").replace("rgb", "rgba"), line: { width: 0 },
-          hoverinfo: "skip", showlegend: false, name: name + " band" },
-        { x: j.dates, y, name: `${name} forecast`, mode: "lines", line: { color, width: 2, dash: "dash" },
-          hovertemplate: `%{x} · <b>%{y:.3f}%</b><extra>${name} forecast</extra>` },
-      ];
-    };
     const hex2rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; };
     const tail = h ? Math.max(0, h.dates.length - Math.max(60, j.horizon * 4)) : 0;
+    const names = j.factor_names || ["Level", "Slope", "Curvature"];
     const traces = [];
-    if (h) {
-      traces.push({ x: h.dates.slice(tail), y: h.level.slice(tail), name: "Level", mode: "lines", line: { color: COLOR.treasury, width: 1.5 } });
-      traces.push({ x: h.dates.slice(tail), y: h.slope.slice(tail), name: "Slope", mode: "lines", line: { color: COLOR.tips, width: 1.5 } });
-      traces.push({ x: h.dates.slice(tail), y: h.curvature.slice(tail), name: "Curvature", mode: "lines", line: { color: COLOR.purple, width: 1.5 } });
+    if (h && h.series) {
+      names.forEach((name) => {
+        if (!h.series[name]) return;
+        traces.push({ x: h.dates.slice(tail), y: h.series[name].slice(tail), name, mode: "lines",
+          line: { color: FACTOR_COLORS[name] || COLOR.obs, width: 1.5 } });
+      });
     }
-    traces.push(...band("level", hex2rgb(COLOR.treasury)), ...band("slope", hex2rgb(COLOR.tips)), ...band("curvature", hex2rgb(COLOR.purple)));
+    names.forEach((name) => {
+      const y = (j.series && j.series[name]) || j[name.toLowerCase()];
+      const sd = (j.series_std && j.series_std[name]) || j[name.toLowerCase() + "_std"];
+      if (!y || !sd) return;
+      const color = hex2rgb(FACTOR_COLORS[name] || COLOR.obs);
+      const upper = y.map((v, i) => v + 1.645 * sd[i]);
+      const lower = y.map((v, i) => v - 1.645 * sd[i]);
+      traces.push({ x: j.dates.concat(j.dates.slice().reverse()), y: upper.concat(lower.slice().reverse()),
+        fill: "toself", fillcolor: color.replace(")", ", 0.12)").replace("rgb", "rgba"), line: { width: 0 },
+        hoverinfo: "skip", showlegend: false, name: name + " band" });
+      traces.push({ x: j.dates, y, name: `${name} forecast`, mode: "lines", line: { color, width: 2, dash: "dash" },
+        hovertemplate: `%{x} · <b>%{y:.3f}%</b><extra>${name} forecast</extra>` });
+    });
     plot("chart-forecast-factors", traces, layoutWith("Date", "Factor (%)"));
 
     plot("chart-forecast-curve", [
@@ -825,9 +846,10 @@
   $("#btn-hist-export").addEventListener("click", () => {
     const h = state.lastHist;
     if (!h) return;
-    const rows = h.dates.map((d, i) => [d, h.level[i], h.slope[i], h.curvature[i], h.tau[i], h.rmse_bps ? h.rmse_bps[i] : ""]);
-    downloadCSV(`factors-${h.bond_type}-${h.summary.start}-${h.summary.end}.csv`,
-      ["date", "level_pct", "slope_pct", "curvature_pct", "tau_years", "rmse_bps"], rows);
+    const cols = h.factor_meta ? h.factor_meta.map((m) => m.label) : ["Level", "Slope", "Curvature", "Tau"];
+    const header = ["date"].concat(cols.map((c) => c.toLowerCase()), ["rmse_bps"]);
+    const rows = h.dates.map((d, i) => [d].concat(cols.map((c) => (h.series && h.series[c] ? h.series[c][i] : "")), [h.rmse_bps ? h.rmse_bps[i] : ""]));
+    downloadCSV(`factors-${h.bond_type}-${h.model || "ns"}-${h.summary.start}-${h.summary.end}.csv`, header, rows);
   });
 
   // ============================================================
@@ -906,6 +928,7 @@
   activateSegmentedByData('.seg-btn[data-bond]', "bond", state.bondType);
   activateSegmentedByData('.seg-btn[data-model]', "model", state.model);
   activateSegmentedByData('.seg-btn[data-hist-bond]', "histBond", state.histBondType);
+  activateSegmentedByData('.seg-btn[data-hist-model]', "histModel", state.histModel);
   applyHistRange(state.histRange);
   applyCmpRange(state.cmpRange);
   $("#lab-show-forward").checked = !!state.showForward;

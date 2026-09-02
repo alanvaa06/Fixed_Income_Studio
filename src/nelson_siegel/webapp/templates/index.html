@@ -234,12 +234,16 @@
         <header class="page-head">
           <div>
             <h2>Historical Factors</h2>
-            <p class="muted">Nelson-Siegel factors over time (daily up to one year, weekly beyond) with one panel-estimated &tau; per bond type. Track regime shifts in level, slope, and curvature.</p>
+            <p class="muted">Factor histories (daily up to one year, weekly beyond) with the decay(s) estimated once on the whole panel. Track regime shifts in level, slope, and curvature; switch to Svensson for a second hump.</p>
           </div>
           <div class="page-actions">
             <div class="segmented" role="group" aria-label="Bond type">
               <button class="seg-btn active" data-hist-bond="treasury" aria-pressed="true">Treasury</button>
               <button class="seg-btn" data-hist-bond="tips" aria-pressed="false">TIPS</button>
+            </div>
+            <div class="segmented" role="group" aria-label="Model" id="hist-model-switch">
+              <button class="seg-btn active" data-hist-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+              <button class="seg-btn" data-hist-model="svensson" aria-pressed="false" title="Needs at least 6 tenors per date">Svensson</button>
             </div>
             <div class="chips" role="group" aria-label="Quick range" id="hist-chips">
               <button class="chip" data-hist-range="1">1Y</button>
@@ -256,7 +260,7 @@
         <div class="grid grid-5">
           <div class="metric"><span class="metric-label">Mean Level</span><span class="metric-value" id="h-level">&mdash;</span></div>
           <div class="metric"><span class="metric-label">Mean Slope</span><span class="metric-value" id="h-slope">&mdash;</span></div>
-          <div class="metric"><span class="metric-label">&tau; (panel)</span><span class="metric-value" id="h-tau">&mdash;</span><span class="metric-hint">One decay for the whole sample</span></div>
+          <div class="metric"><span class="metric-label" id="h-tau-label"><span class="sym">&tau;</span> (panel)</span><span class="metric-value" id="h-tau">&mdash;</span><span class="metric-hint">One decay set for the whole sample</span></div>
           <div class="metric"><span class="metric-label">Mean fit RMSE</span><span class="metric-value" id="h-rmse">&mdash;</span><span class="metric-hint">Lower is a tighter fit</span></div>
           <div class="metric"><span class="metric-label">Observations</span><span class="metric-value" id="h-obs">&mdash;</span></div>
         </div>

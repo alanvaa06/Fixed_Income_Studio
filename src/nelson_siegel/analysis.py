@@ -13,7 +13,7 @@ least-squares solve for (Level, Slope, Curvature) on every date.
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -21,11 +21,29 @@ from scipy.optimize import minimize_scalar
 
 from .data import DataManager
 from .dynamic import DynamicNelsonSiegel, backtest
-from .model import NelsonSiegelModel, TIPSNelsonSiegelModel, TreasuryNelsonSiegelModel
+from .model import (
+    NelsonSiegelModel,
+    TIPSNelsonSiegelModel,
+    TreasuryNelsonSiegelModel,
+    get_model_class,
+    make_model,
+)
 
 _DEFAULT_TAU = {"treasury": 1.37, "tips": 2.0}
+_DEFAULT_DECAYS = {
+    "nelson-siegel": {"treasury": (1.37,), "tips": (2.0,)},
+    "svensson": {"treasury": (1.37, 8.0), "tips": (2.0, 10.0)},
+}
 _FACTOR_COLUMNS = ["Level", "Slope", "Curvature"]
 _BOND_MODELS = {"treasury": TreasuryNelsonSiegelModel, "tips": TIPSNelsonSiegelModel}
+
+
+def _rate_labels(model_cls: Type[NelsonSiegelModel]) -> List[str]:
+    return [m.label for m in model_cls.factor_meta() if m.unit == "rate"]
+
+
+def _decay_labels(model_cls: Type[NelsonSiegelModel]) -> List[str]:
+    return [m.label for m in model_cls.factor_meta() if m.unit == "years"]
 
 
 def _batch_solve(
@@ -78,6 +96,7 @@ class YieldCurveAnalyzer:
         self.treasury_model = TreasuryNelsonSiegelModel()
         self.tips_model = TIPSNelsonSiegelModel()
         self._global_tau: Dict[str, float] = {}
+        self._global_decays: Dict[Tuple[str, str], Tuple[float, ...]] = {}
 
     @staticmethod
     def _resample_long_range(data: pd.DataFrame) -> pd.DataFrame:
@@ -134,6 +153,86 @@ class YieldCurveAnalyzer:
         )
         return float(res.x) if res.fun <= losses[best] else float(grid[best])
 
+    @staticmethod
+    def _panel_profile_decays(
+        yields_df: pd.DataFrame,
+        model: NelsonSiegelModel,
+        min_data_points: int = 3,
+    ) -> Tuple[float, ...]:
+        """Panel estimate of all decay parameters of ``model`` by pooled SSE.
+
+        Reuses the model's own grid + multi-start refinement
+        (:meth:`NelsonSiegelModel.search_decays`) with a pooled objective,
+        so it works for any number of decays (Nelson-Siegel, Svensson, ...).
+        """
+        maturities = np.asarray(yields_df.columns, dtype=float)
+        Y = yields_df.to_numpy(dtype=float)
+        valid = ~np.isnan(Y)
+
+        def pooled_sse(decays: Tuple[float, ...]) -> float:
+            X = model.basis(maturities, *decays)
+            _, sse = _batch_solve(Y, X, valid, min_data_points)
+            if np.all(np.isnan(sse)):
+                return np.inf
+            total = float(np.nansum(sse))
+            return total if np.isfinite(total) else np.inf
+
+        decays, _ = model.search_decays(pooled_sse, model._decay_grids(maturities))
+        return decays
+
+    def _estimate_global_decays(
+        self,
+        bond_type: str,
+        model_id: str = "nelson-siegel",
+        min_data_points: int = 3,
+        data: Optional[pd.DataFrame] = None,
+        sample_size: int = 48,
+    ) -> Tuple[float, ...]:
+        """Pick one set of decay parameters per (bond type, model) from a sample of curves.
+
+        Profiles the pooled sum of squared errors over the decays for up to
+        ``sample_size`` evenly spaced historical curves (Diebold-Li style
+        panel estimate). Reuses ``data`` when provided so the caller's
+        download is not repeated. Falls back to literature defaults if data
+        is unavailable or the estimate fails.
+        """
+        bond_key = bond_type.lower()
+        model_cls = get_model_class(model_id)
+        cache_key = (bond_key, model_cls.model_id)
+        if cache_key in self._global_decays:
+            return self._global_decays[cache_key]
+
+        model = make_model(model_cls.model_id, bond_key)
+        n_min = max(min_data_points, model.n_params)
+
+        try:
+            if data is None:
+                data = self._get_data(self.data_manager, bond_key)
+            if data is None or data.empty:
+                raise ValueError("no data for decay estimation")
+            valid_counts = data.notna().sum(axis=1)
+            usable = data.loc[valid_counts >= n_min]
+            if usable.empty:
+                raise ValueError("no rows with enough valid maturities")
+            if len(usable) > sample_size:
+                pick = np.linspace(0, len(usable) - 1, sample_size).round().astype(int)
+                usable = usable.iloc[np.unique(pick)]
+            decays = self._panel_profile_decays(usable, model, min_data_points)
+        except Exception:
+            decays = _DEFAULT_DECAYS.get(model_cls.model_id, {}).get(bond_key)
+            if decays is None:
+                decays = tuple(float(g[len(g) // 2]) for g in model._decay_grids())
+            warnings.warn(
+                f"Falling back to default decays={decays} for {bond_key}/{model_cls.model_id}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+        self._global_decays[cache_key] = decays
+        if model_cls is NelsonSiegelModel:
+            self._global_tau[bond_key] = decays[0]
+        return decays
+
     def _estimate_global_tau(
         self,
         bond_type: str,
@@ -141,71 +240,54 @@ class YieldCurveAnalyzer:
         data: Optional[pd.DataFrame] = None,
         sample_size: int = 48,
     ) -> float:
-        """Pick one representative tau per bond type from a sample of curves.
-
-        Profiles the pooled sum of squared errors over tau for up to
-        ``sample_size`` evenly spaced historical curves (Diebold-Li style
-        panel estimate). Reuses ``data`` when provided so the caller's
-        download is not repeated. Falls back to a literature default if data
-        is unavailable or the estimate fails.
-        """
+        """Nelson-Siegel panel tau for a bond type (see :meth:`_estimate_global_decays`)."""
         bond_key = bond_type.lower()
         if bond_key in self._global_tau:
             return self._global_tau[bond_key]
-
-        model_cls = _BOND_MODELS.get(bond_key, TreasuryNelsonSiegelModel)
-
-        try:
-            if data is None:
-                data = self._get_data(self.data_manager, bond_key)
-            if data is None or data.empty:
-                raise ValueError("no data for tau estimation")
-            valid_counts = data.notna().sum(axis=1)
-            usable = data.loc[valid_counts >= max(min_data_points, 4)]
-            if usable.empty:
-                raise ValueError("no rows with enough valid maturities")
-            if len(usable) > sample_size:
-                pick = np.linspace(0, len(usable) - 1, sample_size).round().astype(int)
-                usable = usable.iloc[np.unique(pick)]
-            # Same identifiable tau range the single-curve fitter uses.
-            maturities = np.asarray(usable.columns, dtype=float)
-            (tau_lo, tau_hi), = model_cls()._effective_decay_bounds(maturities)
-            tau = self._panel_profile_tau(usable, (tau_lo, tau_hi), min_data_points)
-        except Exception:
-            tau = _DEFAULT_TAU.get(bond_key, 1.37)
-            warnings.warn(
-                f"Falling back to default tau={tau} for {bond_key}",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-
-        self._global_tau[bond_key] = tau
-        return tau
+        return self._estimate_global_decays(
+            bond_key, "nelson-siegel", min_data_points=min_data_points, data=data,
+            sample_size=sample_size,
+        )[0]
 
     @staticmethod
     def _batch_fit_factors(
         yields_df: pd.DataFrame,
-        tau: float,
+        tau: Optional[float] = None,
         min_data_points: int = 3,
+        *,
+        model_cls: Type[NelsonSiegelModel] = NelsonSiegelModel,
+        decays: Optional[Sequence[float]] = None,
     ) -> pd.DataFrame:
         """Closed-form vectorized fit. Groups rows by NaN mask, one lstsq per group.
 
-        Returns columns ``Level, Slope, Curvature, Tau, RMSE`` (RMSE in the
-        same decimal units as the input yields).
+        Pass ``tau`` for Nelson-Siegel or ``decays`` (and ``model_cls``) for
+        any model in the family. Returns the model's rate factors (e.g.
+        ``Level, Slope, Curvature``), its constant decay column(s) (``Tau``,
+        ...) and ``RMSE`` in the same decimal units as the input yields.
         """
-        columns = _FACTOR_COLUMNS + ["Tau", "RMSE"]
+        if decays is None:
+            if tau is None:
+                raise ValueError("Provide tau (Nelson-Siegel) or decays")
+            decays = (float(tau),)
+        decays = tuple(float(d) for d in decays)
+        rate_cols = _rate_labels(model_cls)
+        decay_cols = _decay_labels(model_cls)
+        if len(decays) != len(decay_cols):
+            raise ValueError(f"{model_cls.display_name} needs {len(decay_cols)} decay(s), got {len(decays)}")
+        columns = rate_cols + decay_cols + ["RMSE"]
         if yields_df.empty:
             return pd.DataFrame(columns=columns)
 
         maturities = np.asarray(yields_df.columns, dtype=float)
-        X_full = NelsonSiegelModel.basis(maturities, tau)
+        X_full = model_cls.basis(maturities, *decays)
         Y = yields_df.to_numpy(dtype=float)
         valid = ~np.isnan(Y)
-        betas, sse = _batch_solve(Y, X_full, valid, min_data_points)
+        betas, sse = _batch_solve(Y, X_full, valid, max(min_data_points, len(rate_cols)))
 
-        df = pd.DataFrame(betas, index=yields_df.index, columns=_FACTOR_COLUMNS)
+        df = pd.DataFrame(betas, index=yields_df.index, columns=rate_cols)
         df = df.dropna(how="any")
-        df["Tau"] = float(tau)
+        for name, value in zip(decay_cols, decays):
+            df[name] = value
         n_valid = valid.sum(axis=1)
         with np.errstate(invalid="ignore", divide="ignore"):
             rmse = np.sqrt(sse / np.where(n_valid > 0, n_valid, np.nan))
@@ -219,9 +301,10 @@ class YieldCurveAnalyzer:
         end_date: Optional[str] = None,
         min_data_points: int = 3,
         verbose: bool = False,
+        model: str = "nelson-siegel",
     ) -> pd.DataFrame:
         """
-        Calculate historical Nelson-Siegel factors for a bond type.
+        Calculate historical factors for a bond type.
 
         Parameters:
         -----------
@@ -233,11 +316,16 @@ class YieldCurveAnalyzer:
             End date in 'YYYY-MM-DD' format
         min_data_points : int
             Minimum number of valid data points required for fitting
+        model : str
+            Registered model id: ``"nelson-siegel"`` (default) or ``"svensson"``.
+            The decays are estimated once per (bond type, model) on a panel
+            of curves; the betas are solved in closed form per date.
 
         Returns:
         --------
         pd.DataFrame
-            DataFrame with historical factors (Level, Slope, Curvature, Tau, RMSE)
+            Historical factors: the model's rate factors (Level, Slope,
+            Curvature[, Curvature2]), its decay column(s) (Tau[, Tau2]) and RMSE
 
         Raises:
         -------
@@ -265,8 +353,19 @@ class YieldCurveAnalyzer:
             )
             print(f"Maturities: {list(data.columns)} years")
 
-        tau = self._estimate_global_tau(bond_key, min_data_points=min_data_points, data=data)
-        factors_df = self._batch_fit_factors(data, tau, min_data_points=min_data_points)
+        model_cls = get_model_class(model)
+        max_tenors = int(data.notna().sum(axis=1).max())
+        if max_tenors < model_cls.describe()["min_points"]:
+            raise ValueError(
+                f"{model_cls.display_name} needs at least {model_cls.describe()['min_points']} "
+                f"tenors per date; {bond_type} data has at most {max_tenors}."
+            )
+        decays = self._estimate_global_decays(
+            bond_key, model_cls.model_id, min_data_points=min_data_points, data=data
+        )
+        factors_df = self._batch_fit_factors(
+            data, min_data_points=min_data_points, model_cls=model_cls, decays=decays
+        )
 
         if factors_df.empty:
             raise ValueError(f"Could not fit model for any dates in {bond_type} data")
@@ -288,6 +387,7 @@ class YieldCurveAnalyzer:
         end_date: Optional[str] = None,
         maturities: Optional[Sequence[float]] = None,
         factors: Optional[pd.DataFrame] = None,
+        model: str = "nelson-siegel",
     ) -> Dict:
         """
         Diebold-Li dynamic forecast of the factors and the implied yield curves.
@@ -307,6 +407,8 @@ class YieldCurveAnalyzer:
             Maturities for the forecast curves; defaults to the bond's quoted tenors.
         factors : pd.DataFrame, optional
             Pre-computed factor history (skips the download and cross-section fits).
+        model : str
+            Registered curve model id whose loadings map factors to yields.
 
         Returns:
         --------
@@ -318,13 +420,14 @@ class YieldCurveAnalyzer:
         bond_key = bond_type.lower()
         if bond_key not in _BOND_MODELS:
             raise ValueError("bond_type must be 'treasury' or 'tips'")
+        model_cls = get_model_class(model)
         if factors is None:
-            factors = self.analyze_historical_factors(bond_key, start_date, end_date)
+            factors = self.analyze_historical_factors(bond_key, start_date, end_date, model=model)
         if maturities is None:
             maturities = list(self._get_data(self.data_manager, bond_key, start_date, end_date).columns)
         maturities = [float(m) for m in maturities]
 
-        dns = DynamicNelsonSiegel(method).fit(factors)
+        dns = DynamicNelsonSiegel(method, model_cls=model_cls).fit(factors)
         forecast = dns.forecast_factors(horizon)
         curves = dns.forecast_curve(maturities, horizon)
         return {
@@ -346,15 +449,19 @@ class YieldCurveAnalyzer:
         end_date: Optional[str] = None,
         min_train: int = 52,
         factors: Optional[pd.DataFrame] = None,
+        model: str = "nelson-siegel",
     ) -> pd.DataFrame:
         """Out-of-sample RMSE of random walk vs AR(1) vs VAR(1) (see :func:`nelson_siegel.dynamic.backtest`)."""
         bond_key = bond_type.lower()
         if bond_key not in _BOND_MODELS:
             raise ValueError("bond_type must be 'treasury' or 'tips'")
+        model_cls = get_model_class(model)
         if factors is None:
-            factors = self.analyze_historical_factors(bond_key, start_date, end_date)
+            factors = self.analyze_historical_factors(bond_key, start_date, end_date, model=model)
         maturities = list(self._get_data(self.data_manager, bond_key, start_date, end_date).columns)
-        return backtest(factors, horizons=horizons, min_train=min_train, maturities=maturities)
+        return backtest(
+            factors, horizons=horizons, min_train=min_train, maturities=maturities, model_cls=model_cls
+        )
 
     def analyze_single_curve(
         self,
