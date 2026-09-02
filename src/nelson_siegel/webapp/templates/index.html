@@ -8,7 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236aa9ff'/%3E%3Cpath d='M10 44 C 22 10, 34 12, 54 26' stroke='white' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <script src="{{ plotly_src }}" charset="utf-8"></script>
 </head>
 <body data-fred-key="{{ 'true' if fred_key_present else 'false' }}">
   <div class="app-shell">
@@ -21,20 +22,20 @@
         </div>
       </div>
 
-      <nav class="nav">
-        <button class="nav-item active" data-tab="fitter">
+      <nav class="nav" aria-label="Sections">
+        <button class="nav-item active" data-tab="fitter" title="Alt+1">
           <span class="nav-icon">&#9684;</span> Curve Fitter
         </button>
-        <button class="nav-item" data-tab="explorer">
+        <button class="nav-item" data-tab="explorer" title="Alt+2">
           <span class="nav-icon">&#9881;</span> Parameter Lab
         </button>
-        <button class="nav-item" data-tab="historical">
+        <button class="nav-item" data-tab="historical" title="Alt+3">
           <span class="nav-icon">&#9696;</span> Historical Factors
         </button>
-        <button class="nav-item" data-tab="compare">
+        <button class="nav-item" data-tab="compare" title="Alt+4">
           <span class="nav-icon">&#10696;</span> Treasury vs TIPS
         </button>
-        <button class="nav-item" data-tab="learn">
+        <button class="nav-item" data-tab="learn" title="Alt+5">
           <span class="nav-icon">&#9432;</span> Learn the Model
         </button>
       </nav>
@@ -78,12 +79,16 @@
         <header class="page-head">
           <div>
             <h2>Curve Fitter</h2>
-            <p class="muted">Drop in market quotes and watch the Nelson-Siegel model fit a smooth yield curve in real time.</p>
+            <p class="muted">Drop in market quotes and watch the model fit a smooth yield curve. Choose the bond type and the model family.</p>
           </div>
           <div class="page-actions">
-            <div class="segmented" role="tablist" aria-label="Bond type">
-              <button class="seg-btn active" data-bond="treasury">Treasury</button>
-              <button class="seg-btn" data-bond="tips">TIPS</button>
+            <div class="segmented" role="group" aria-label="Bond type">
+              <button class="seg-btn active" data-bond="treasury" aria-pressed="true">Treasury</button>
+              <button class="seg-btn" data-bond="tips" aria-pressed="false">TIPS</button>
+            </div>
+            <div class="segmented" role="group" aria-label="Model" id="fit-model-switch">
+              <button class="seg-btn active" data-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+              <button class="seg-btn" data-model="svensson" aria-pressed="false">Svensson</button>
             </div>
             <button class="btn ghost" id="btn-load-snapshot">Load latest snapshot</button>
           </div>
@@ -95,10 +100,20 @@
               <h3>Market quotes</h3>
               <div class="card-tools">
                 <button class="btn small" id="btn-add-row">+ Add row</button>
+                <button class="btn small" id="btn-paste-toggle" aria-expanded="false">Paste</button>
                 <button class="btn small ghost" id="btn-reset-rows">Reset</button>
               </div>
             </div>
             <div class="card-body">
+              <div class="paste-panel" id="paste-panel" hidden>
+                <label for="paste-text" class="muted">One quote per line: <code>maturity yield</code>. Suffixes like <code>3M</code>, <code>2Y</code> and a trailing <code>%</code> are fine.</label>
+                <textarea id="paste-text" class="input" rows="6" placeholder="3M 4.95&#10;2Y 4.30&#10;10Y 4.05&#10;30Y 4.35" spellcheck="false"></textarea>
+                <div class="row gap">
+                  <button class="btn small primary" id="btn-paste-apply">Use these quotes</button>
+                  <button class="btn small ghost" id="btn-paste-cancel">Cancel</button>
+                  <span class="hint" id="paste-error"></span>
+                </div>
+              </div>
               <table class="quote-table" id="quote-table">
                 <thead>
                   <tr>
@@ -109,9 +124,10 @@
                 </thead>
                 <tbody id="quote-tbody"></tbody>
               </table>
-              <div class="row gap">
-                <button class="btn primary" id="btn-fit">Fit Nelson-Siegel</button>
+              <div class="row gap wrap">
+                <button class="btn primary" id="btn-fit">Fit curve</button>
                 <span class="hint" id="fit-error"></span>
+                <span class="muted tip">Press <kbd>Enter</kbd> in any cell to fit.</span>
               </div>
             </div>
           </div>
@@ -119,7 +135,9 @@
           <div class="card">
             <div class="card-head">
               <h3>Fitted curve</h3>
-              <span class="badge" id="fit-rmse">&mdash;</span>
+              <div class="badges" id="fit-badges">
+                <span class="badge" id="fit-rmse">&mdash;</span>
+              </div>
             </div>
             <div class="card-body">
               <div id="chart-fit" class="chart"></div>
@@ -127,17 +145,15 @@
           </div>
         </div>
 
-        <div class="grid grid-3">
-          <div class="metric"><span class="metric-label">&beta;<sub>0</sub> &middot; Level</span><span class="metric-value" id="m-level">&mdash;</span><span class="metric-hint">Long-term yield</span></div>
-          <div class="metric"><span class="metric-label">&beta;<sub>1</sub> &middot; Slope</span><span class="metric-value" id="m-slope">&mdash;</span><span class="metric-hint">Short-end pull</span></div>
-          <div class="metric"><span class="metric-label">&beta;<sub>2</sub> &middot; Curvature</span><span class="metric-value" id="m-curv">&mdash;</span><span class="metric-hint">Belly twist</span></div>
-          <div class="metric"><span class="metric-label">&tau; &middot; Decay</span><span class="metric-value" id="m-tau">&mdash;</span><span class="metric-hint">Curvature peak (yrs)</span></div>
-        </div>
+        <div class="grid grid-4" id="fit-metrics" aria-live="polite"></div>
 
         <div class="card">
           <div class="card-head">
             <h3>Residuals (observed &minus; fitted)</h3>
-            <span class="muted">Negative deviations &rarr; cheap, positive &rarr; expensive vs the model.</span>
+            <div class="card-tools">
+              <span class="muted">Negative &rarr; cheap, positive &rarr; expensive vs the model.</span>
+              <button class="btn small ghost" id="btn-fit-export" disabled>Export CSV</button>
+            </div>
           </div>
           <div class="card-body">
             <div id="chart-residuals" class="chart small"></div>
@@ -150,9 +166,13 @@
         <header class="page-head">
           <div>
             <h2>Parameter Lab</h2>
-            <p class="muted">Move the sliders and watch each Nelson-Siegel factor reshape the curve.</p>
+            <p class="muted">Move the sliders and watch each factor reshape the curve. Everything here is computed in your browser.</p>
           </div>
           <div class="page-actions">
+            <div class="segmented" role="group" aria-label="Model" id="lab-model-switch">
+              <button class="seg-btn active" data-lab-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+              <button class="seg-btn" data-lab-model="svensson" aria-pressed="false">Svensson</button>
+            </div>
             <button class="btn ghost" data-preset="normal">Normal</button>
             <button class="btn ghost" data-preset="inverted">Inverted</button>
             <button class="btn ghost" data-preset="humped">Humped</button>
@@ -162,14 +182,17 @@
 
         <div class="grid grid-2-1">
           <div class="card">
-            <div class="card-head"><h3>Live curve</h3></div>
+            <div class="card-head">
+              <h3>Live curve</h3>
+              <label class="toggle"><input type="checkbox" id="lab-show-forward" /> Show forward curve</label>
+            </div>
             <div class="card-body">
               <div id="chart-explorer" class="chart"></div>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-head"><h3>Controls</h3></div>
+            <div class="card-head"><h3>Controls</h3><button class="btn small ghost" id="btn-lab-from-fit" title="Copy the last fitted parameters into the sliders">Use last fit</button></div>
             <div class="card-body sliders">
               <label>
                 <div class="row between"><span>&beta;<sub>0</sub> &middot; Level (%)</span><span class="mono" id="lbl-b0">3.50</span></div>
@@ -187,9 +210,19 @@
                 <div class="row between"><span>&tau; &middot; Decay (yrs)</span><span class="mono" id="lbl-tau">2.00</span></div>
                 <input type="range" id="sl-tau" min="0.1" max="10" step="0.05" value="2" />
               </label>
+              <div id="svensson-sliders" class="sliders" hidden>
+                <label>
+                  <div class="row between"><span>&beta;<sub>3</sub> &middot; Curvature 2 (%)</span><span class="mono" id="lbl-b3">0.00</span></div>
+                  <input type="range" id="sl-b3" min="-8" max="8" step="0.05" value="0" />
+                </label>
+                <label>
+                  <div class="row between"><span>&tau;<sub>2</sub> &middot; Decay 2 (yrs)</span><span class="mono" id="lbl-tau2">8.00</span></div>
+                  <input type="range" id="sl-tau2" min="0.1" max="20" step="0.05" value="8" />
+                </label>
+              </div>
 
-              <div class="formula">
-                <code>y(&tau;) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;f<sub>1</sub>(&tau;,&lambda;) + &beta;<sub>2</sub>&middot;f<sub>2</sub>(&tau;,&lambda;)</code>
+              <div class="formula" id="lab-formula">
+                <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;f<sub>1</sub>(t,&tau;) + &beta;<sub>2</sub>&middot;f<sub>2</sub>(t,&tau;)</code>
               </div>
             </div>
           </div>
@@ -201,32 +234,53 @@
         <header class="page-head">
           <div>
             <h2>Historical Factors</h2>
-            <p class="muted">Nelson-Siegel factors over time (daily up to one year, weekly beyond). Track regime shifts in level, slope, and curvature.</p>
+            <p class="muted">Nelson-Siegel factors over time (daily up to one year, weekly beyond) with one panel-estimated &tau; per bond type. Track regime shifts in level, slope, and curvature.</p>
           </div>
           <div class="page-actions">
-            <div class="segmented">
-              <button class="seg-btn active" data-hist-bond="treasury">Treasury</button>
-              <button class="seg-btn" data-hist-bond="tips">TIPS</button>
+            <div class="segmented" role="group" aria-label="Bond type">
+              <button class="seg-btn active" data-hist-bond="treasury" aria-pressed="true">Treasury</button>
+              <button class="seg-btn" data-hist-bond="tips" aria-pressed="false">TIPS</button>
             </div>
-            <input type="date" id="hist-start" class="input" />
-            <input type="date" id="hist-end" class="input" />
+            <div class="chips" role="group" aria-label="Quick range" id="hist-chips">
+              <button class="chip" data-hist-range="1">1Y</button>
+              <button class="chip" data-hist-range="3">3Y</button>
+              <button class="chip" data-hist-range="5">5Y</button>
+              <button class="chip" data-hist-range="10">10Y</button>
+            </div>
+            <input type="date" id="hist-start" class="input" aria-label="Start date" />
+            <input type="date" id="hist-end" class="input" aria-label="End date" />
             <button class="btn primary" id="btn-hist-run">Run</button>
           </div>
         </header>
 
-        <div class="grid grid-3">
+        <div class="grid grid-5">
           <div class="metric"><span class="metric-label">Mean Level</span><span class="metric-value" id="h-level">&mdash;</span></div>
           <div class="metric"><span class="metric-label">Mean Slope</span><span class="metric-value" id="h-slope">&mdash;</span></div>
+          <div class="metric"><span class="metric-label">&tau; (panel)</span><span class="metric-value" id="h-tau">&mdash;</span><span class="metric-hint">One decay for the whole sample</span></div>
+          <div class="metric"><span class="metric-label">Mean fit RMSE</span><span class="metric-value" id="h-rmse">&mdash;</span><span class="metric-hint">Lower is a tighter fit</span></div>
           <div class="metric"><span class="metric-label">Observations</span><span class="metric-value" id="h-obs">&mdash;</span></div>
         </div>
 
         <div class="card">
           <div class="card-head">
             <h3>Factor evolution</h3>
-            <span class="muted" id="hist-range">&mdash;</span>
+            <div class="card-tools">
+              <span class="muted" id="hist-range">&mdash;</span>
+              <button class="btn small ghost" id="btn-hist-export" disabled>Export CSV</button>
+            </div>
           </div>
           <div class="card-body">
             <div id="chart-historical" class="chart tall"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>Fit quality per date</h3>
+            <span class="muted">RMSE of the fitted curve in basis points. Spikes flag days the three-factor shape could not capture.</span>
+          </div>
+          <div class="card-body">
+            <div id="chart-hist-rmse" class="chart small"></div>
           </div>
         </div>
       </section>
@@ -239,21 +293,31 @@
             <p class="muted">Compare nominal and real curves. The level differential implies breakeven inflation expectations.</p>
           </div>
           <div class="page-actions">
-            <input type="date" id="cmp-start" class="input" />
-            <input type="date" id="cmp-end" class="input" />
+            <div class="chips" role="group" aria-label="Quick range" id="cmp-chips">
+              <button class="chip" data-cmp-range="1">1Y</button>
+              <button class="chip" data-cmp-range="3">3Y</button>
+              <button class="chip" data-cmp-range="5">5Y</button>
+              <button class="chip" data-cmp-range="10">10Y</button>
+            </div>
+            <input type="date" id="cmp-start" class="input" aria-label="Start date" />
+            <input type="date" id="cmp-end" class="input" aria-label="End date" />
             <button class="btn primary" id="btn-cmp-run">Run comparison</button>
             <span class="muted" id="cmp-status"></span>
           </div>
         </header>
 
-        <div class="grid grid-3">
+        <div class="grid grid-4">
           <div class="metric"><span class="metric-label">Level corr.</span><span class="metric-value" id="c-corr-level">&mdash;</span></div>
           <div class="metric"><span class="metric-label">Slope corr.</span><span class="metric-value" id="c-corr-slope">&mdash;</span></div>
+          <div class="metric"><span class="metric-label">Curvature corr.</span><span class="metric-value" id="c-corr-curv">&mdash;</span></div>
           <div class="metric"><span class="metric-label">Common dates</span><span class="metric-value" id="c-obs">&mdash;</span></div>
         </div>
 
         <div class="card">
-          <div class="card-head"><h3>Levels &amp; breakeven inflation</h3></div>
+          <div class="card-head">
+            <h3>Levels &amp; breakeven inflation</h3>
+            <button class="btn small ghost" id="btn-cmp-export" disabled>Export CSV</button>
+          </div>
           <div class="card-body">
             <div id="chart-compare" class="chart tall"></div>
           </div>
@@ -273,11 +337,11 @@
           <div class="card">
             <div class="card-head"><h3>The equation</h3></div>
             <div class="card-body learn">
-              <p>The Nelson-Siegel functional form expresses the yield <code>y</code> at maturity <code>&tau;</code> as:</p>
+              <p>The Nelson-Siegel functional form expresses the yield <code>y</code> at maturity <code>t</code> (years) with a decay parameter <code>&tau;</code>:</p>
               <div class="formula big">
-                <code>y(&tau;) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;[(1 - e<sup>-&tau;/&lambda;</sup>) / (&tau;/&lambda;)] + &beta;<sub>2</sub>&middot;{[(1 - e<sup>-&tau;/&lambda;</sup>) / (&tau;/&lambda;)] - e<sup>-&tau;/&lambda;</sup>}</code>
+                <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] + &beta;<sub>2</sub>&middot;{[(1 - e<sup>-t/&tau;</sup>) / (t/&tau;)] - e<sup>-t/&tau;</sup>}</code>
               </div>
-              <p>Three economic factors plus a decay parameter capture nearly any plausible curve shape with only four numbers.</p>
+              <p>Three economic factors plus a decay parameter capture nearly any plausible curve shape with only four numbers. The <b>Svensson</b> extension adds a second hump, <code>&beta;<sub>3</sub>&middot;f<sub>2</sub>(t,&tau;<sub>2</sub>)</code>, for curves with two bulges; it needs at least six quotes.</p>
             </div>
           </div>
 
@@ -286,10 +350,22 @@
             <div class="card-body learn">
               <ul class="checklist">
                 <li><b>&beta;<sub>0</sub> &middot; Level</b> - long-run yield. Parallel shifts of the entire curve.</li>
-                <li><b>&beta;<sub>1</sub> &middot; Slope</b> - short-end loading. Negative when curves are upward-sloping.</li>
-                <li><b>&beta;<sub>2</sub> &middot; Curvature</b> - mid-curve hump. Positive = belly above the line through ends.</li>
-                <li><b>&tau; &middot; Decay</b> - where curvature peaks (in years).</li>
+                <li><b>&beta;<sub>1</sub> &middot; Slope</b> - short minus long (<code>y(0) = &beta;<sub>0</sub> + &beta;<sub>1</sub></code>). Negative when the curve slopes upward, positive when inverted.</li>
+                <li><b>&beta;<sub>2</sub> &middot; Curvature</b> - mid-curve hump. Positive = belly above the line through the ends.</li>
+                <li><b>&tau; &middot; Decay</b> - where the hump sits: curvature peaks near <code>1.8&middot;&tau;</code> years. The fitter only searches &tau; values whose hump falls inside your quoted maturities; a "&tau; at search bound" badge means the data barely pins it down.</li>
               </ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3>How the fit works</h3></div>
+            <div class="card-body learn">
+              <ol class="steps">
+                <li>For each candidate &tau; on a fine grid, the betas are solved exactly by least squares (the model is linear once &tau; is fixed).</li>
+                <li>The best candidates are refined with a bounded search; the lowest error wins. No initial guess, fully deterministic.</li>
+                <li><b>RMSE</b> (in basis points) and <b>R&sup2;</b> summarise the fit. The dotted <b>forward curve</b> is <code>d[t&middot;y(t)]/dt</code>, the market's implied path of short rates.</li>
+                <li>Historical factors reuse one &tau; per bond type, estimated on the whole sample (the Diebold-Li convention), so the factor series are comparable across dates.</li>
+              </ol>
             </div>
           </div>
 
@@ -310,9 +386,10 @@
             <div class="card-body learn">
               <ol class="steps">
                 <li>Open <b>Curve Fitter</b>, paste market quotes (or click <i>Load latest snapshot</i>).</li>
-                <li>Hit <b>Fit Nelson-Siegel</b>. Read off level/slope/curvature/decay.</li>
-                <li>Switch to <b>Parameter Lab</b> to see how each factor reshapes the curve.</li>
-                <li>Use <b>Historical Factors</b> for time-series and <b>Treasury vs TIPS</b> for breakevens.</li>
+                <li>Hit <b>Fit curve</b>. Read off level/slope/curvature/decay and the residuals.</li>
+                <li>Switch to <b>Parameter Lab</b> and press <i>Use last fit</i> to see how each factor reshapes the curve.</li>
+                <li>Use <b>Historical Factors</b> for time series and <b>Treasury vs TIPS</b> for breakevens. Quick-range chips set the dates; every chart exports to CSV.</li>
+                <li>Keyboard: <kbd>Alt</kbd>+<kbd>1</kbd>&hellip;<kbd>5</kbd> switch tabs.</li>
               </ol>
             </div>
           </div>
@@ -321,7 +398,7 @@
     </main>
   </div>
 
-  <div class="toast" id="toast" role="status"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

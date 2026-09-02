@@ -10,10 +10,16 @@ __author__ = "Economics Research Team"
 __email__ = "research@example.com"
 
 from .model import (
+    MODEL_REGISTRY,
+    CurveModel,
+    FactorMeta,
     NelsonSiegelModel,
     SvenssonModel,
     TIPSNelsonSiegelModel,
     TreasuryNelsonSiegelModel,
+    get_model_class,
+    list_models,
+    make_model,
 )
 from .data import TreasuryDataDownloader, TIPSDataDownloader, DataManager
 from .analysis import YieldCurveAnalyzer
@@ -39,6 +45,12 @@ except ImportError:
     HAS_WEBAPP = False
 
 __all__ = [
+    "CurveModel",
+    "FactorMeta",
+    "MODEL_REGISTRY",
+    "get_model_class",
+    "list_models",
+    "make_model",
     "NelsonSiegelModel",
     "SvenssonModel",
     "TreasuryNelsonSiegelModel",

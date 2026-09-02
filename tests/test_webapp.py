@@ -231,3 +231,103 @@ def test_historical_endpoint_reports_tau_and_rmse():
     assert len(payload["rmse_bps"]) == len(payload["dates"])
     assert payload["summary"]["tau"] > 0
     assert payload["summary"]["rmse_bps_mean"] >= 0
+
+
+_POINTS = [
+    {"maturity": 0.25, "yield": 4.95}, {"maturity": 0.5, "yield": 4.85},
+    {"maturity": 1, "yield": 4.65}, {"maturity": 2, "yield": 4.30},
+    {"maturity": 3, "yield": 4.10}, {"maturity": 5, "yield": 3.95},
+    {"maturity": 7, "yield": 4.00}, {"maturity": 10, "yield": 4.05},
+    {"maturity": 20, "yield": 4.30}, {"maturity": 30, "yield": 4.35},
+]
+
+
+def test_models_endpoint_lists_registered_models():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        payload = client.get("/api/models").get_json()
+    ids = [m["id"] for m in payload["models"]]
+    assert ids == ["nelson-siegel", "svensson"]
+    svensson = payload["models"][1]
+    assert svensson["min_points"] == 6
+    assert [f["label"] for f in svensson["factors"]] == [
+        "Level", "Slope", "Curvature", "Curvature2", "Tau", "Tau2",
+    ]
+
+
+def test_fit_endpoint_supports_svensson_and_generic_factor_list():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        ns = client.post("/api/fit", json={"bond_type": "treasury", "points": _POINTS}).get_json()
+        sv = client.post(
+            "/api/fit", json={"bond_type": "treasury", "points": _POINTS, "model": "svensson"}
+        ).get_json()
+
+    assert ns["model"] == "nelson-siegel" and set(ns["factors"]) == {"Level", "Slope", "Curvature", "Tau"}
+    assert sv["model"] == "svensson" and sv["model_name"] == "Svensson"
+    assert [f["label"] for f in sv["factor_list"]] == [
+        "Level", "Slope", "Curvature", "Curvature2", "Tau", "Tau2",
+    ]
+    assert all(f["unit"] in {"rate", "years"} for f in sv["factor_list"])
+    assert sv["rmse_bps"] <= ns["rmse_bps"] + 1e-6  # Svensson nests Nelson-Siegel
+    assert sv["n_points"] == len(_POINTS)
+
+
+def test_fit_endpoint_enforces_model_minimum_points_and_unknown_model():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        short = client.post("/api/fit", json={"points": _POINTS[:5], "model": "svensson"})
+        unknown = client.post("/api/fit", json={"points": _POINTS, "model": "spline"})
+    assert short.status_code == 400 and "6" in short.get_json()["error"]
+    assert unknown.status_code == 400 and "Unknown model" in unknown.get_json()["error"]
+
+
+def test_snapshot_accepts_model_and_rejects_too_few_maturities():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        ok = client.get("/api/snapshot?bond_type=treasury&model=svensson")
+        tips = client.get("/api/snapshot?bond_type=tips&model=svensson")  # only 5 maturities
+    assert ok.status_code == 200 and ok.get_json()["model"] == "svensson"
+    assert tips.status_code == 422
+
+
+def test_curve_endpoint_evaluates_svensson_when_extra_params_given():
+    app = create_app(enable_warmup=False)
+    base = {"beta0": 4.0, "beta1": -2.0, "beta2": 1.0, "tau": 2.0}
+    with app.test_client() as client:
+        ns = client.post("/api/curve", json=base).get_json()
+        sv = client.post("/api/curve", json={**base, "beta3": -1.0, "tau2": 8.0}).get_json()
+        bad = client.post("/api/curve", json={**base, "beta3": -1.0, "tau2": 0})
+    assert len(ns["yields"]) == len(sv["yields"])
+    assert ns["yields"] != sv["yields"]
+    assert bad.status_code == 400
+
+
+def test_index_uses_local_plotly_when_package_installed(monkeypatch):
+    from nelson_siegel.webapp import app as app_module
+
+    app = create_app(enable_warmup=False)
+    if app.config["PLOTLY_LOCAL_PATH"]:
+        with app.test_client() as client:
+            html = client.get("/").get_data(as_text=True)
+            js = client.get("/static/vendor/plotly.min.js")
+        assert "/static/vendor/plotly.min.js" in html
+        assert js.status_code == 200 and js.mimetype == "application/javascript"
+    else:
+        with app.test_client() as client:
+            html = client.get("/").get_data(as_text=True)
+            js = client.get("/static/vendor/plotly.min.js")
+        assert app_module.PLOTLY_CDN_URL in html
+        assert js.status_code == 404
+
+
+def test_index_falls_back_to_cdn_without_plotly_package(monkeypatch):
+    from nelson_siegel.webapp import app as app_module
+
+    monkeypatch.setattr(app_module, "_local_plotly_path", lambda: None)
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        html = client.get("/").get_data(as_text=True)
+        js = client.get("/static/vendor/plotly.min.js")
+    assert app_module.PLOTLY_CDN_URL in html
+    assert js.status_code == 404

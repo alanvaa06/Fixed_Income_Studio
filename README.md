@@ -59,16 +59,18 @@ python scripts/run_webapp.py
 
 Without a key the app falls back to **realistic synthetic data**, so every feature still works for exploration and demos.
 
+Charts load plotly.js from its CDN. For offline or locked-down networks, `pip install plotly` and the Studio serves the bundled copy locally instead (automatic, no configuration).
+
 ## Web UI: Nelson-Siegel Studio
 
 A single-page application served by Flask. Five tabs:
 
 | Tab | What you can do |
 |---|---|
-| **Curve Fitter** | Type in or paste market quotes (or click *Load latest snapshot*). Fits the curve, shows the smooth NS line, residuals in basis points, and the four factors as live metric tiles. |
-| **Parameter Lab** | Drag sliders for β₀, β₁, β₂, τ. The chart redraws in real time and overlays each factor's individual contribution so you can *see* what curvature actually does. Preset buttons jump you to **Normal / Inverted / Humped / Flat** shapes. |
-| **Historical Factors** | Pick a date range; the app computes daily NS factors and plots the time series. Useful for spotting regime changes in level/slope/curvature. |
-| **Treasury vs TIPS** | Aligns both curves on common dates and overlays the **breakeven inflation** spread (Treasury level − TIPS level). |
+| **Curve Fitter** | Type in or paste market quotes (a paste box accepts `2Y 4.30`, `3M, 4.95%`, tab-separated, etc.), or click *Load latest snapshot*. Pick **Nelson-Siegel** or **Svensson**; the factor tiles adapt to the model. Shows the smooth fit, the implied forward curve, residuals in basis points, RMSE / R² badges, and exports the fitted table to CSV. |
+| **Parameter Lab** | Drag sliders for β₀, β₁, β₂, τ (plus β₃, τ₂ for Svensson). Everything is computed in the browser, so it redraws instantly and overlays each factor's contribution and optionally the forward curve. Presets jump to **Normal / Inverted / Humped / Flat**; *Use last fit* copies the fitted parameters in. |
+| **Historical Factors** | Quick-range chips (1Y-10Y) or custom dates; plots the factor series, the panel-estimated τ, and a per-date fit-RMSE chart that flags days the shape could not capture. CSV export. |
+| **Treasury vs TIPS** | Aligns both curves on common dates, overlays the **breakeven inflation** spread (Treasury level − TIPS level), and reports level/slope/curvature correlations. CSV export. |
 | **Learn the Model** | Plain-language tour of the equation, factors, curve shapes, and reading signals. |
 
 ### Run options
@@ -101,9 +103,10 @@ All endpoints are JSON. Yields are returned in **percent** (e.g. `4.25`), maturi
 | Method & path | Purpose |
 |---|---|
 | `GET  /api/health` | Liveness check + whether a FRED key is configured |
-| `POST /api/fit` | Fit β₀, β₁, β₂, τ to user-supplied (maturity, yield) points |
-| `POST /api/curve` | Evaluate the NS function at custom parameters (no fit) |
-| `GET  /api/snapshot?bond_type=treasury\|tips` | Latest available curve + fitted factors |
+| `GET  /api/models` | Registered curve models with their factor metadata (label, symbol, unit, hint) |
+| `POST /api/fit` | Fit a model to user-supplied (maturity, yield) points. Body: `points`, `bond_type`, optional `model` (`nelson-siegel` default, or `svensson`). Returns a generic `factor_list`, RMSE, R² and the forward curve. |
+| `POST /api/curve` | Evaluate the NS function at custom parameters (no fit); pass `beta3` and `tau2` to evaluate Svensson |
+| `GET  /api/snapshot?bond_type=treasury\|tips&model=...` | Latest available curve + fitted factors |
 | `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD` | Factor history (daily up to one year, weekly beyond) with per-date fit RMSE |
 | `GET  /api/compare?start=...&end=...` | Treasury vs TIPS factor history + breakevens |
 
@@ -153,6 +156,12 @@ svensson = SvenssonModel().fit(
     yields=np.array([0.0495, 0.0465, 0.0430, 0.0395, 0.0398, 0.0405, 0.0430, 0.0435]),
 )
 print(svensson.get_factors())         # Level, Slope, Curvature, Curvature2, Tau, Tau2
+
+# Model registry / protocol: every model satisfies `CurveModel`
+from nelson_siegel import CurveModel, list_models, make_model
+assert isinstance(svensson, CurveModel)
+print([m["id"] for m in list_models()])          # ['nelson-siegel', 'svensson']
+model = make_model("nelson-siegel", bond_type="tips")   # bond-type preset bounds
 
 # 2. High-level analyzer
 analyzer = YieldCurveAnalyzer()

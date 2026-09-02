@@ -533,3 +533,87 @@ class TestSvenssonModel:
         true = (0.045, -0.02, 0.01, -0.015, 1.2, 8.0)
         model = SvenssonModel().fit(MATS, SvenssonModel.model_function(MATS, *true))
         assert 'Curvature2=' in repr(model) and 'Tau2=' in repr(model)
+
+
+class TestCurveModelProtocolAndRegistry:
+    """The seam that lets further models plug into the analyzer and the app."""
+
+    def test_builtin_models_satisfy_protocol(self):
+        from nelson_siegel.model import CurveModel
+
+        assert isinstance(NelsonSiegelModel(), CurveModel)
+        assert isinstance(SvenssonModel(), CurveModel)
+        assert isinstance(TreasuryNelsonSiegelModel(), CurveModel)
+        assert not isinstance(object(), CurveModel)
+
+    def test_minimal_third_party_model_satisfies_protocol(self):
+        """Documents the surface a spline/bootstrap model must provide."""
+        from nelson_siegel.model import CurveModel, FactorMeta
+
+        class FlatCurve:
+            model_id = "flat"
+            display_name = "Flat"
+            fitted = False
+
+            def fit(self, maturities, yields):
+                self.level = float(np.mean(yields))
+                self.fitted = True
+                return self
+
+            def predict(self, maturities):
+                return np.full(len(np.asarray(maturities)), self.level)
+
+            def forward_rate(self, maturities):
+                return self.predict(maturities)
+
+            def discount_factor(self, maturities):
+                t = np.asarray(maturities, dtype=float)
+                return np.exp(-t * self.level)
+
+            def get_factors(self):
+                return {"Level": self.level}
+
+            def fit_stats(self):
+                return {"method": "mean", "n_obs": 0, "sse": 0.0, "rmse": 0.0}
+
+            @classmethod
+            def factor_meta(cls):
+                return (FactorMeta("level", "Level", "L", "rate", "flat"),)
+
+            @classmethod
+            def describe(cls):
+                return {"id": cls.model_id, "name": cls.display_name, "n_params": 1}
+
+        assert isinstance(FlatCurve(), CurveModel)
+
+    def test_factor_meta_matches_param_names(self):
+        for cls in (NelsonSiegelModel, SvenssonModel):
+            assert tuple(m.key for m in cls.factor_meta()) == cls.param_names
+            assert [m.label for m in cls.factor_meta()] == [cls.factor_labels[k] for k in cls.param_names]
+            units = [m.unit for m in cls.factor_meta()]
+            assert units[: cls.n_linear] == ["rate"] * cls.n_linear
+            assert units[cls.n_linear :] == ["years"] * (len(cls.param_names) - cls.n_linear)
+
+    def test_describe_is_json_friendly(self):
+        import json
+
+        for cls in (NelsonSiegelModel, SvenssonModel):
+            desc = cls.describe()
+            json.dumps(desc)
+            assert desc["id"] == cls.model_id
+            assert desc["n_params"] == len(cls.param_names)
+            assert len(desc["factors"]) == len(cls.param_names)
+
+    def test_registry_lookup_and_presets(self):
+        from nelson_siegel.model import MODEL_REGISTRY, get_model_class, list_models, make_model
+
+        assert set(MODEL_REGISTRY) == {"nelson-siegel", "svensson"}
+        assert get_model_class("SVENSSON") is SvenssonModel
+        assert get_model_class("nelson_siegel") is NelsonSiegelModel
+        assert isinstance(make_model("nelson-siegel", "treasury"), TreasuryNelsonSiegelModel)
+        assert isinstance(make_model("nelson-siegel", "tips"), TIPSNelsonSiegelModel)
+        assert type(make_model("svensson", "treasury")) is SvenssonModel
+        assert type(make_model()) is NelsonSiegelModel
+        assert [m["id"] for m in list_models()] == ["nelson-siegel", "svensson"]
+        with pytest.raises(ValueError, match="Unknown model"):
+            get_model_class("spline")

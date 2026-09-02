@@ -25,12 +25,60 @@ from __future__ import annotations
 
 import itertools
 import warnings
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
 from scipy.optimize import OptimizeWarning, curve_fit, minimize, minimize_scalar
 
+try:  # Python >= 3.8
+    from typing import Protocol, runtime_checkable
+except ImportError:  # pragma: no cover
+    from typing_extensions import Protocol, runtime_checkable  # type: ignore
+
 ArrayLike = Union[Sequence[float], np.ndarray]
+
+
+class FactorMeta(NamedTuple):
+    """Presentation metadata for one fitted parameter."""
+
+    key: str  #: parameter name as in ``parameters``
+    label: str  #: human label used by ``get_factors``
+    symbol: str  #: short mathematical symbol for UIs
+    unit: str  #: ``"rate"`` (same units as the yields) or ``"years"``
+    hint: str  #: one-line interpretation
+
+
+@runtime_checkable
+class CurveModel(Protocol):
+    """Contract every curve model in this package satisfies.
+
+    ``NelsonSiegelModel`` and ``SvenssonModel`` implement it; a spline,
+    bootstrap or dynamic model should implement the same surface so the
+    analyzer and the web app can treat all models uniformly. Yields are
+    decimals (0.04 == 4%), maturities are in years.
+    """
+
+    model_id: str
+    display_name: str
+    fitted: bool
+
+    def fit(self, maturities: ArrayLike, yields: ArrayLike) -> "CurveModel": ...
+
+    def predict(self, maturities: ArrayLike) -> np.ndarray: ...
+
+    def forward_rate(self, maturities: ArrayLike) -> np.ndarray: ...
+
+    def discount_factor(self, maturities: ArrayLike) -> np.ndarray: ...
+
+    def get_factors(self) -> Dict[str, float]: ...
+
+    def fit_stats(self) -> Dict[str, Union[float, int, str, bool]]: ...
+
+    @classmethod
+    def factor_meta(cls) -> Tuple[FactorMeta, ...]: ...
+
+    @classmethod
+    def describe(cls) -> Dict[str, object]: ...
 
 # Practical decay range used for the profile grid when the model bounds are
 # unbounded. Outside this range the NS loadings are numerically degenerate
@@ -65,6 +113,9 @@ class NelsonSiegelModel:
     inherited.
     """
 
+    #: Identifier used by the model registry and the REST API.
+    model_id: str = "nelson-siegel"
+    display_name: str = "Nelson-Siegel"
     #: Ordered parameter names. Linear (beta) parameters first, decays last.
     param_names: Tuple[str, ...] = ("beta0", "beta1", "beta2", "tau")
     #: Number of leading parameters that enter linearly.
@@ -76,6 +127,12 @@ class NelsonSiegelModel:
         "beta2": "Curvature",
         "tau": "Tau",
     }
+    _factor_meta: Tuple[FactorMeta, ...] = (
+        FactorMeta("beta0", "Level", "\u03b2\u2080", "rate", "Long-run yield; shifts the whole curve"),
+        FactorMeta("beta1", "Slope", "\u03b2\u2081", "rate", "Short minus long; negative when upward-sloping"),
+        FactorMeta("beta2", "Curvature", "\u03b2\u2082", "rate", "Mid-curve hump; positive = belly above ends"),
+        FactorMeta("tau", "Tau", "\u03c4", "years", "Decay; curvature peaks near 1.8\u00d7\u03c4"),
+    )
     #: Number of grid points per decay parameter in the profile search.
     decay_grid_size: int = 80
     #: The curvature loading f2 peaks at t ~= 1.8 * tau. By default the decay
@@ -123,6 +180,22 @@ class NelsonSiegelModel:
     @classmethod
     def _default_initial_guess(cls) -> Tuple[float, ...]:
         return (3.0, 0.0, 0.0, 1.0)
+
+    @classmethod
+    def factor_meta(cls) -> Tuple[FactorMeta, ...]:
+        """Presentation metadata for each parameter, in ``param_names`` order."""
+        return cls._factor_meta
+
+    @classmethod
+    def describe(cls) -> Dict[str, object]:
+        """JSON-friendly description of the model for UIs and the REST API."""
+        return {
+            "id": cls.model_id,
+            "name": cls.display_name,
+            "n_params": len(cls.param_names),
+            "min_points": len(cls.param_names),
+            "factors": [meta._asdict() for meta in cls.factor_meta()],
+        }
 
     @property
     def n_params(self) -> int:
@@ -671,6 +744,8 @@ class SvenssonModel(NelsonSiegelModel):
     0.1) because tau1 == tau2 makes the design matrix singular.
     """
 
+    model_id = "svensson"
+    display_name = "Svensson"
     param_names = ("beta0", "beta1", "beta2", "beta3", "tau1", "tau2")
     n_linear = 4
     factor_labels = {
@@ -681,6 +756,14 @@ class SvenssonModel(NelsonSiegelModel):
         "tau1": "Tau",
         "tau2": "Tau2",
     }
+    _factor_meta = (
+        FactorMeta("beta0", "Level", "\u03b2\u2080", "rate", "Long-run yield; shifts the whole curve"),
+        FactorMeta("beta1", "Slope", "\u03b2\u2081", "rate", "Short minus long; negative when upward-sloping"),
+        FactorMeta("beta2", "Curvature", "\u03b2\u2082", "rate", "First hump, peaks near 1.8\u00d7\u03c4\u2081"),
+        FactorMeta("beta3", "Curvature2", "\u03b2\u2083", "rate", "Second hump, peaks near 1.8\u00d7\u03c4\u2082"),
+        FactorMeta("tau1", "Tau", "\u03c4\u2081", "years", "Decay of the first hump"),
+        FactorMeta("tau2", "Tau2", "\u03c4\u2082", "years", "Decay of the second hump"),
+    )
     decay_grid_size = 24
     _min_log_decay_gap = 0.1
 
@@ -723,3 +806,44 @@ class SvenssonModel(NelsonSiegelModel):
         _, f1, f2 = NelsonSiegelModel._loadings(t, tau1)
         _, _, g2 = NelsonSiegelModel._loadings(t, tau2)
         return beta0 + beta1 * f1 + beta2 * f2 + beta3 * g2
+
+
+# --------------------------------------------------------------------------- #
+# Registry
+# --------------------------------------------------------------------------- #
+MODEL_REGISTRY: Dict[str, Type[NelsonSiegelModel]] = {
+    NelsonSiegelModel.model_id: NelsonSiegelModel,
+    SvenssonModel.model_id: SvenssonModel,
+}
+
+_BOND_PRESETS: Dict[str, Dict[str, Type[NelsonSiegelModel]]] = {
+    NelsonSiegelModel.model_id: {
+        "treasury": TreasuryNelsonSiegelModel,
+        "tips": TIPSNelsonSiegelModel,
+    },
+}
+
+
+def get_model_class(model_id: str) -> Type[NelsonSiegelModel]:
+    """Look up a registered model class by id (case-insensitive)."""
+    key = (model_id or NelsonSiegelModel.model_id).lower().replace("_", "-")
+    try:
+        return MODEL_REGISTRY[key]
+    except KeyError:
+        raise ValueError(
+            f"Unknown model '{model_id}'. Available: {', '.join(sorted(MODEL_REGISTRY))}"
+        ) from None
+
+
+def make_model(model_id: str = NelsonSiegelModel.model_id, bond_type: Optional[str] = None) -> NelsonSiegelModel:
+    """Instantiate a registered model, applying the bond-type preset when one exists."""
+    cls = get_model_class(model_id)
+    presets = _BOND_PRESETS.get(cls.model_id, {})
+    if bond_type and bond_type.lower() in presets:
+        return presets[bond_type.lower()]()
+    return cls()
+
+
+def list_models() -> List[Dict[str, object]]:
+    """Descriptions of all registered models (see :meth:`NelsonSiegelModel.describe`)."""
+    return [cls.describe() for cls in MODEL_REGISTRY.values()]
