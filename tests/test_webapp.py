@@ -184,3 +184,50 @@ def test_fred_key_change_cancels_and_restarts_warmup(monkeypatch):
     assert response.status_code == 200
     assert second_thread is not first_thread
     assert not second_thread.is_alive()
+
+
+def test_snapshot_shares_analyzer_data_manager():
+    """Snapshot, tau estimation and history should share one memoised data source."""
+    app = create_app(enable_warmup=False)
+    assert app.config["DATA_MANAGER"] is app.config["ANALYZER"].data_manager
+
+    with app.test_client() as client:
+        first = client.get("/api/snapshot?bond_type=treasury")
+        second = client.get("/api/snapshot?bond_type=treasury")
+
+    assert first.status_code == 200
+    payload = first.get_json()
+    assert payload == second.get_json()
+    assert len(payload["smooth"]["forward"]) == len(payload["smooth"]["maturities"])
+    # Only one synthetic frame was generated for the default window.
+    assert len(app.config["DATA_MANAGER"].treasury_downloader._cache) == 1
+
+
+def test_fit_endpoint_returns_diagnostics_and_forward_curve():
+    app = create_app(enable_warmup=False)
+    points = [
+        {"maturity": 0.25, "yield": 4.95}, {"maturity": 1, "yield": 4.65},
+        {"maturity": 2, "yield": 4.30}, {"maturity": 5, "yield": 3.95},
+        {"maturity": 10, "yield": 4.05}, {"maturity": 30, "yield": 4.35},
+    ]
+    with app.test_client() as client:
+        response = client.post("/api/fit", json={"bond_type": "treasury", "points": points})
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 0.0 <= payload["r_squared"] <= 1.0
+    assert isinstance(payload["decay_at_bound"], bool)
+    assert len(payload["smooth"]["forward"]) == len(payload["smooth"]["maturities"])
+    assert payload["rmse_bps"] < 15.0
+
+
+def test_historical_endpoint_reports_tau_and_rmse():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        response = client.get("/api/historical?bond_type=tips&start=2025-01-01&end=2025-06-30")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert len(payload["rmse_bps"]) == len(payload["dates"])
+    assert payload["summary"]["tau"] > 0
+    assert payload["summary"]["rmse_bps_mean"] >= 0

@@ -184,11 +184,20 @@
       line: { color: COLOR.fitted, width: 3, shape: "spline" },
       hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>NS Fit</extra>",
     };
+    const fitTraces = [obsTrace, fitTrace];
+    if (result.smooth.forward) {
+      fitTraces.push({
+        x: result.smooth.maturities, y: result.smooth.forward,
+        mode: "lines", name: "Instantaneous forward",
+        line: { color: COLOR.purple, width: 1.5, dash: "dot" },
+        hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Forward</extra>",
+      });
+    }
     const layout = Object.assign({}, PLOT_LAYOUT, {
       xaxis: Object.assign({}, PLOT_LAYOUT.xaxis, { title: "Maturity (years)" }),
       yaxis: Object.assign({}, PLOT_LAYOUT.yaxis, { title: "Yield (%)" }),
     });
-    Plotly.react("chart-fit", [obsTrace, fitTrace], layout, PLOT_CONFIG);
+    Plotly.react("chart-fit", fitTraces, layout, PLOT_CONFIG);
 
     const colors = result.deviations_bps.map((d) => (d >= 0 ? COLOR.red : COLOR.treasury));
     const resTrace = {
@@ -210,7 +219,10 @@
     $("#m-slope").textContent = fmt(result.factors.Slope, 3, " %");
     $("#m-curv").textContent = fmt(result.factors.Curvature, 3, " %");
     $("#m-tau").textContent = fmt(result.factors.Tau, 2, " y");
-    $("#fit-rmse").textContent = `RMSE ${result.rmse_bps.toFixed(1)} bps`;
+    const r2 = typeof result.r_squared === "number" && !isNaN(result.r_squared)
+      ? ` · R² ${result.r_squared.toFixed(4)}` : "";
+    const bound = result.decay_at_bound ? " · τ at search bound" : "";
+    $("#fit-rmse").textContent = `RMSE ${result.rmse_bps.toFixed(1)} bps${r2}${bound}`;
   }
 
   async function fitCurrentRows() {
@@ -290,33 +302,32 @@
     $("#lbl-tau").textContent = parseFloat($("#sl-tau").value).toFixed(2);
   }
 
+  // Nelson-Siegel loadings, evaluated client-side so slider drags never
+  // round-trip to the server (the /api/curve endpoint remains for API users).
+  function nsLoadings(t, tau) {
+    if (t === 0) return { f1: 1, f2: 0 };
+    const e = Math.exp(-t / tau);
+    const f1 = (1 - e) / (t / tau);
+    return { f1, f2: f1 - e };
+  }
+  const EXPLORER_MATS = Array.from({ length: 250 }, (_, i) => 0.083 + (i * (30 - 0.083)) / 249);
+
   let explorerTimer = null;
-  async function drawExplorer() {
+  function drawExplorer() {
     clearTimeout(explorerTimer);
-    explorerTimer = setTimeout(async () => {
+    explorerTimer = setTimeout(() => {
       const params = readSliders();
       try {
-        const r = await fetch("/api/curve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...params, max_maturity: 30 }),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || "Curve failed.");
-
-        // Decompose into level / slope / curvature contributions
-        const mats = j.maturities;
+        const mats = EXPLORER_MATS;
         const tau = params.tau;
         const lvl = mats.map(() => params.beta0);
-        const slp = mats.map((t) => params.beta1 * ((1 - Math.exp(-t / tau)) / (t / tau)));
-        const crv = mats.map((t) => {
-          const f1 = (1 - Math.exp(-t / tau)) / (t / tau);
-          return params.beta2 * (f1 - Math.exp(-t / tau));
-        });
+        const slp = mats.map((t) => params.beta1 * nsLoadings(t, tau).f1);
+        const crv = mats.map((t) => params.beta2 * nsLoadings(t, tau).f2);
+        const curve = mats.map((t, i) => lvl[i] + slp[i] + crv[i]);
 
         const traces = [
           {
-            x: mats, y: j.yields, name: "Curve", mode: "lines",
+            x: mats, y: curve, name: "Curve", mode: "lines",
             line: { color: COLOR.fitted, width: 3, shape: "spline" },
             hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Curve</extra>",
           },
@@ -424,7 +435,9 @@
       $("#h-level").textContent = fmt(j.summary.level_mean, 2, " %");
       $("#h-slope").textContent = fmt(j.summary.slope_mean, 2, " %");
       $("#h-obs").textContent = j.summary.n_observations.toLocaleString();
-      $("#hist-range").textContent = `${j.summary.start} → ${j.summary.end}${j.is_synthetic ? " · synthetic" : ""}`;
+      const tauNote = typeof j.summary.tau === "number" ? ` · τ ${j.summary.tau.toFixed(2)}y` : "";
+      const rmseNote = typeof j.summary.rmse_bps_mean === "number" ? ` · mean fit RMSE ${j.summary.rmse_bps_mean.toFixed(1)} bps` : "";
+      $("#hist-range").textContent = `${j.summary.start} → ${j.summary.end}${tauNote}${rmseNote}${j.is_synthetic ? " · synthetic" : ""}`;
       toast("Historical factors loaded.", "success");
     } catch (err) {
       toast(err.message, "error");

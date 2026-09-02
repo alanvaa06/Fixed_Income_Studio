@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nelson-siegel"
-version = "1.1.0"
+version = "1.2.0"
 description = "Nelson-Siegel Model for Yield Curve Analysis with Treasury and TIPS data"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -165,7 +165,7 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
-    "--cov=nelson_siegel_model",
+    "--cov=nelson_siegel",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
@@ -181,7 +181,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["nelson_siegel_model"]
+source = ["nelson_siegel"]
 omit = [
     "*/tests/*",
     "*/test_*",

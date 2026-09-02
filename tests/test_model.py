@@ -2,10 +2,10 @@
 
 import numpy as np
 import pytest
-from unittest.mock import patch
 
 from nelson_siegel.model import (
     NelsonSiegelModel,
+    SvenssonModel,
     TreasuryNelsonSiegelModel,
     TIPSNelsonSiegelModel
 )
@@ -77,9 +77,13 @@ class TestNelsonSiegelModel:
         assert 'Curvature' in factors
         assert 'Tau' in factors
         
-        # Parameters should be close to true values
+        # Level is well identified; tau is only weakly identified by five noisy
+        # points, so check the fit is at least as good as the true parameters
+        # (the least-squares optimum for this sample sits near tau = 2.5).
         assert abs(factors['Level'] - true_params[0]) < 0.01
-        assert abs(factors['Tau'] - true_params[3]) < 0.5
+        assert 0.5 < factors['Tau'] < 5.0
+        sse_true = float(((NelsonSiegelModel.model_function(maturities, *true_params) - yields) ** 2).sum())
+        assert model.fit_stats()['sse'] <= sse_true + 1e-12
     
     def test_fit_insufficient_data(self):
         """Test that fitting fails with insufficient data points."""
@@ -301,8 +305,9 @@ class TestTreasuryNelsonSiegelModel:
         # Level should be positive for Treasury yields
         assert factors['Level'] > 0
         
-        # For this inverted curve, slope should be negative
-        assert factors['Slope'] < 0
+        # Nelson-Siegel slope is (short - long): positive for an inverted curve
+        assert factors['Slope'] > 0
+        assert model.predict([0.25])[0] > model.predict([30.0])[0]
 
 
 class TestTIPSNelsonSiegelModel:
@@ -351,3 +356,180 @@ class TestTIPSNelsonSiegelModel:
         # Level can be negative for TIPS
         # The model should still fit successfully
         assert abs(factors['Level']) < 0.05  # Should be reasonable
+
+
+MATS = np.array([0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30], dtype=float)
+
+
+class TestProfileFit:
+    """Default profile-likelihood fitter: grid over tau + closed-form betas."""
+
+    def test_recovers_exact_parameters_on_noiseless_data(self):
+        true = (0.04, -0.012, 0.018, 1.7)
+        yields = NelsonSiegelModel.model_function(MATS, *true)
+        model = NelsonSiegelModel().fit(MATS, yields)
+        p = model.parameters
+        assert np.isclose(p['beta0'], true[0], atol=1e-8)
+        assert np.isclose(p['beta1'], true[1], atol=1e-8)
+        assert np.isclose(p['beta2'], true[2], atol=1e-8)
+        assert np.isclose(p['tau'], true[3], atol=1e-4)
+        assert model.fit_stats()['method'] == 'profile'
+        assert model.fit_stats()['rmse'] < 1e-8
+
+    def test_profile_never_worse_than_curve_fit(self):
+        rng = np.random.default_rng(3)
+        for _ in range(10):
+            true = (0.03 + 0.02 * rng.random(), -0.02 * rng.random(), 0.03 * (rng.random() - 0.5),
+                    0.3 + 4 * rng.random())
+            yields = NelsonSiegelModel.model_function(MATS, *true) + rng.normal(0, 2e-4, len(MATS))
+            profile = NelsonSiegelModel().fit(MATS, yields, method='profile')
+            legacy = NelsonSiegelModel().fit(MATS, yields, method='curve_fit')
+            assert profile.fit_stats()['sse'] <= legacy.fit_stats()['sse'] * (1 + 1e-6) + 1e-14
+
+    def test_is_deterministic(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.01, 0.01, 2.2)
+        a = NelsonSiegelModel().fit(MATS, yields).parameters
+        b = NelsonSiegelModel().fit(MATS, yields).parameters
+        assert a == b
+
+    def test_respects_tau_bounds(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.01, 0.01, 8.0)
+        model = NelsonSiegelModel(bounds=([-1, -1, -1, 0.1], [1, 1, 1, 3.0])).fit(MATS, yields)
+        assert 0.1 <= model.parameters['tau'] <= 3.0
+        # Constrained fit must not beat the unconstrained optimum.
+        free = NelsonSiegelModel().fit(MATS, yields)
+        assert model.fit_stats()['sse'] >= free.fit_stats()['sse'] - 1e-15
+
+    def test_decay_at_bound_flag(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.01, 0.01, 2.0)
+        edge = MATS.max() / NelsonSiegelModel.hump_location_factor
+        assert NelsonSiegelModel().fit_fixed_tau(MATS, yields, tau=edge).fit_stats()['decay_at_bound'] is True
+        assert NelsonSiegelModel().fit_fixed_tau(MATS, yields, tau=2.0).fit_stats()['decay_at_bound'] is False
+
+    def test_weakly_identified_curvature_still_finds_global_optimum(self):
+        # Tiny curvature makes the profile SSE multi-modal in tau; the fitter
+        # must still land on the exact (zero-residual) solution.
+        mats = np.array([0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0])
+        true = (0.03, -0.0085, 0.0027, 1.46)
+        model = NelsonSiegelModel().fit(mats, NelsonSiegelModel.model_function(mats, *true))
+        assert np.isclose(model.parameters['tau'], true[3], atol=1e-3)
+        assert model.fit_stats()['sse'] < 1e-14
+
+    def test_beta_bounds_trigger_bounded_fallback(self):
+        # Force a violation: level bounded away from the data's true level.
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.01, 0.01, 2.0)
+        model = NelsonSiegelModel(bounds=([0.05, -1, -1, 0.05], [1, 1, 1, 30])).fit(MATS, yields)
+        assert model.parameters['beta0'] >= 0.05 - 1e-9
+        assert model.fit_stats()['method'] == 'profile+curve_fit'
+
+    def test_hump_constraint_prevents_collinear_blowup(self):
+        # Long-only maturities (5-30y) with a gently curved shape: an
+        # unconstrained tau ~0.1 gives near-collinear loadings and betas of
+        # several hundred percent. The default hump constraint prevents that.
+        mats = np.array([5.0, 7.0, 10.0, 20.0, 30.0])
+        # A curve that a tiny tau with huge offsetting betas reproduces exactly
+        # (this parameter set came out of an unconstrained fit on synthetic TIPS
+        # data). Between 5y and 30y it is just a gently curved ~2.35% curve.
+        yields = NelsonSiegelModel.model_function(mats, 0.0235, 4.77, -5.0, 0.12)
+        assert np.all((yields > 0.015) & (yields < 0.03))
+
+        model = TIPSNelsonSiegelModel().fit(mats, yields)
+        assert model.parameters['tau'] >= mats.min() / 1.8 - 1e-9
+        assert abs(model.parameters['beta1']) < 0.2 and abs(model.parameters['beta2']) < 0.2
+        assert model.fit_stats()['rmse'] < 0.001  # still within 10 bps
+
+        free = TIPSNelsonSiegelModel()
+        free.hump_location_factor = None
+        free.fit(mats, yields)
+        assert free.parameters['tau'] < mats.min() / 1.8  # the unidentifiable region
+
+    def test_unknown_method_rejected(self):
+        with pytest.raises(ValueError, match="method must be"):
+            NelsonSiegelModel().fit(MATS, np.full(len(MATS), 0.03), method='nope')
+
+    def test_fit_stats_before_fit_raises(self):
+        with pytest.raises(ValueError, match="fitted before"):
+            NelsonSiegelModel().fit_stats()
+
+    def test_fit_stats_r_squared(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.015, 0.01, 1.5)
+        stats = NelsonSiegelModel().fit(MATS, yields).fit_stats()
+        assert stats['n_obs'] == len(MATS)
+        assert stats['r_squared'] > 0.999999
+
+
+class TestCurveConstruction:
+    """Forward rates and discount factors derived from the fitted curve."""
+
+    def test_forward_rate_matches_numerical_derivative(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.012, 0.018, 1.7)
+        model = NelsonSiegelModel().fit(MATS, yields)
+        t = np.array([0.5, 2.0, 7.0, 15.0])
+        h = 1e-5
+        numeric = ((t + h) * model.predict(t + h) - (t - h) * model.predict(t - h)) / (2 * h)
+        assert np.allclose(model.forward_rate(t), numeric, atol=1e-8)
+
+    def test_forward_rate_limits(self):
+        model = NelsonSiegelModel().fit_fixed_tau(MATS, np.full(len(MATS), 0.03), tau=2.0)
+        model.parameters.update({'beta0': 0.05, 'beta1': -0.02, 'beta2': 0.01})
+        # f(0) = beta0 + beta1, f(inf) -> beta0
+        assert np.isclose(model.forward_rate([0.0])[0], 0.03)
+        assert np.isclose(model.forward_rate([1e4])[0], 0.05, atol=1e-8)
+
+    def test_discount_factor(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.012, 0.018, 1.7)
+        model = NelsonSiegelModel().fit(MATS, yields)
+        t = np.array([1.0, 10.0])
+        expected = np.exp(-t * model.predict(t))
+        assert np.allclose(model.discount_factor(t), expected)
+        assert np.isclose(model.discount_factor([0.0])[0], 1.0)
+
+    def test_derived_quantities_require_fit(self):
+        with pytest.raises(ValueError):
+            NelsonSiegelModel().forward_rate([1.0])
+        with pytest.raises(ValueError):
+            NelsonSiegelModel().discount_factor([1.0])
+
+
+class TestSvenssonModel:
+    """Six-parameter Svensson extension reusing the same fitting seam."""
+
+    def test_recovers_parameters(self):
+        true = (0.045, -0.02, 0.01, -0.015, 1.2, 8.0)
+        yields = SvenssonModel.model_function(MATS, *true)
+        model = SvenssonModel().fit(MATS, yields)
+        values = [model.parameters[k] for k in SvenssonModel.param_names]
+        assert np.allclose(values[:4], true[:4], atol=1e-6)
+        assert np.allclose(values[4:], true[4:], rtol=1e-3)
+        factors = model.get_factors()
+        assert set(factors) == {'Level', 'Slope', 'Curvature', 'Curvature2', 'Tau', 'Tau2'}
+
+    def test_nests_nelson_siegel(self):
+        yields = NelsonSiegelModel.model_function(MATS, 0.04, -0.012, 0.018, 1.7)
+        assert SvenssonModel().fit(MATS, yields).fit_stats()['rmse'] < 1e-5
+
+    def test_requires_six_points(self):
+        with pytest.raises(ValueError, match="at least 6 data points"):
+            SvenssonModel().fit(MATS[:5], np.full(5, 0.03))
+
+    def test_forward_rate_matches_numerical_derivative(self):
+        true = (0.045, -0.02, 0.01, -0.015, 1.2, 8.0)
+        model = SvenssonModel().fit(MATS, SvenssonModel.model_function(MATS, *true))
+        t = np.array([0.5, 2.0, 7.0, 15.0])
+        h = 1e-5
+        numeric = ((t + h) * model.predict(t + h) - (t - h) * model.predict(t - h)) / (2 * h)
+        assert np.allclose(model.forward_rate(t), numeric, atol=1e-8)
+
+    def test_fixed_decays_closed_form(self):
+        true = (0.045, -0.02, 0.01, -0.015, 1.2, 8.0)
+        yields = SvenssonModel.model_function(MATS, *true)
+        model = SvenssonModel().fit_fixed_decays(MATS, yields, 1.2, 8.0)
+        assert np.allclose([model.parameters[k] for k in ('beta0', 'beta1', 'beta2', 'beta3')],
+                           true[:4], atol=1e-10)
+        with pytest.raises(ValueError, match="Expected 2 decay"):
+            SvenssonModel().fit_fixed_decays(MATS, yields, 1.2)
+
+    def test_repr_lists_all_factors(self):
+        true = (0.045, -0.02, 0.01, -0.015, 1.2, 8.0)
+        model = SvenssonModel().fit(MATS, SvenssonModel.model_function(MATS, *true))
+        assert 'Curvature2=' in repr(model) and 'Tau2=' in repr(model)

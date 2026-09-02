@@ -3,22 +3,60 @@ Yield Curve Analysis Module
 
 This module provides high-level analysis functionality for yield curves
 including historical parameter estimation and comparative analysis.
+
+Historical factor estimation follows the Diebold-Li convention: one decay
+parameter (tau) per bond type, estimated once by profiling the pooled sum of
+squared errors over a sample of historical curves, then a closed-form
+least-squares solve for (Level, Slope, Curvature) on every date.
 """
+
+import warnings
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Dict, Optional, List, Tuple
-from concurrent.futures import ThreadPoolExecutor
-import warnings
+from scipy.optimize import minimize_scalar
 
-from .model import NelsonSiegelModel, TreasuryNelsonSiegelModel, TIPSNelsonSiegelModel
 from .data import DataManager
-
-warnings.filterwarnings('ignore')
-
+from .model import NelsonSiegelModel, TIPSNelsonSiegelModel, TreasuryNelsonSiegelModel
 
 _DEFAULT_TAU = {"treasury": 1.37, "tips": 2.0}
+_FACTOR_COLUMNS = ["Level", "Slope", "Curvature"]
+_BOND_MODELS = {"treasury": TreasuryNelsonSiegelModel, "tips": TIPSNelsonSiegelModel}
+
+
+def _batch_solve(
+    Y: np.ndarray,
+    X_full: np.ndarray,
+    valid: np.ndarray,
+    min_data_points: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Row-wise closed-form OLS grouped by NaN pattern.
+
+    Returns ``(betas, sse)`` with shapes ``(n_rows, 3)`` and ``(n_rows,)``.
+    Rows with fewer than ``min_data_points`` valid maturities are NaN.
+    """
+    n_rows = Y.shape[0]
+    betas = np.full((n_rows, X_full.shape[1]), np.nan, dtype=float)
+    sse = np.full(n_rows, np.nan, dtype=float)
+    if n_rows == 0:
+        return betas, sse
+
+    patterns, inverse = np.unique(valid, axis=0, return_inverse=True)
+    inverse = np.asarray(inverse).ravel()
+    for p_idx, row_mask in enumerate(patterns):
+        if row_mask.sum() < min_data_points:
+            continue
+        group_idx = np.where(inverse == p_idx)[0]
+        X_g = X_full[row_mask]
+        Y_g = Y[np.ix_(group_idx, row_mask)]
+        b, *_ = np.linalg.lstsq(X_g, Y_g.T, rcond=None)
+        resid = Y_g - (X_g @ b).T
+        betas[group_idx] = b.T
+        sse[group_idx] = (resid**2).sum(axis=1)
+    return betas, sse
 
 
 class YieldCurveAnalyzer:
@@ -51,37 +89,89 @@ class YieldCurveAnalyzer:
         sampled = data.resample("W-FRI").last().dropna(how="all")
         return sampled if not sampled.empty else data
 
-    def _estimate_global_tau(self, bond_type: str, min_data_points: int = 3) -> float:
-        """Pick one representative tau per bond type via a single variable-tau fit.
+    @staticmethod
+    def _get_data(data_manager: DataManager, bond_type: str, start: Optional[str] = None,
+                  end: Optional[str] = None) -> pd.DataFrame:
+        if bond_type == "treasury":
+            return data_manager.get_treasury_data(start, end)
+        return data_manager.get_tips_data(start, end)
 
-        Fits the most recent valid curve with the bound-equipped Treasury or TIPS
-        model. Falls back to a literature default if data or the fit fails.
+    @staticmethod
+    def _panel_profile_tau(
+        yields_df: pd.DataFrame,
+        tau_bounds: Tuple[float, float],
+        min_data_points: int = 3,
+        n_grid: int = 60,
+    ) -> float:
+        """Estimate one tau for a panel of curves by minimising the pooled SSE.
+
+        For each candidate tau the betas of every row are solved in closed form,
+        so the search is a cheap one-dimensional profile over tau.
+        """
+        maturities = np.asarray(yields_df.columns, dtype=float)
+        Y = yields_df.to_numpy(dtype=float)
+        valid = ~np.isnan(Y)
+        lo, hi = tau_bounds
+
+        def pooled_sse(tau: float) -> float:
+            X = NelsonSiegelModel.basis(maturities, tau)
+            _, sse = _batch_solve(Y, X, valid, min_data_points)
+            total = np.nansum(sse)
+            return float(total) if np.isfinite(total) and not np.all(np.isnan(sse)) else np.inf
+
+        grid = np.geomspace(lo, hi, n_grid)
+        losses = np.array([pooled_sse(t) for t in grid])
+        if not np.isfinite(losses).any():
+            raise ValueError("no rows with enough valid maturities")
+        best = int(np.argmin(losses))
+        bracket_lo = float(grid[max(best - 1, 0)])
+        bracket_hi = float(grid[min(best + 1, n_grid - 1)])
+        if bracket_hi <= bracket_lo:
+            return float(grid[best])
+        res = minimize_scalar(
+            pooled_sse, bounds=(bracket_lo, bracket_hi), method="bounded", options={"xatol": 1e-6}
+        )
+        return float(res.x) if res.fun <= losses[best] else float(grid[best])
+
+    def _estimate_global_tau(
+        self,
+        bond_type: str,
+        min_data_points: int = 3,
+        data: Optional[pd.DataFrame] = None,
+        sample_size: int = 48,
+    ) -> float:
+        """Pick one representative tau per bond type from a sample of curves.
+
+        Profiles the pooled sum of squared errors over tau for up to
+        ``sample_size`` evenly spaced historical curves (Diebold-Li style
+        panel estimate). Reuses ``data`` when provided so the caller's
+        download is not repeated. Falls back to a literature default if data
+        is unavailable or the estimate fails.
         """
         bond_key = bond_type.lower()
         if bond_key in self._global_tau:
             return self._global_tau[bond_key]
 
-        if bond_key == "treasury":
-            data = self.data_manager.get_treasury_data()
-            model = TreasuryNelsonSiegelModel()
-        else:
-            data = self.data_manager.get_tips_data()
-            model = TIPSNelsonSiegelModel()
+        model_cls = _BOND_MODELS.get(bond_key, TreasuryNelsonSiegelModel)
 
         try:
+            if data is None:
+                data = self._get_data(self.data_manager, bond_key)
             if data is None or data.empty:
                 raise ValueError("no data for tau estimation")
             valid_counts = data.notna().sum(axis=1)
-            usable = data.loc[valid_counts >= min_data_points].dropna(how="all")
+            usable = data.loc[valid_counts >= max(min_data_points, 4)]
             if usable.empty:
                 raise ValueError("no rows with enough valid maturities")
-            row = usable.iloc[-1].dropna()
-            maturities = np.asarray(row.index, dtype=float)
-            yields = np.asarray(row.values, dtype=float)
-            model.fit(maturities, yields)
-            tau = float(model.parameters["tau"])
+            if len(usable) > sample_size:
+                pick = np.linspace(0, len(usable) - 1, sample_size).round().astype(int)
+                usable = usable.iloc[np.unique(pick)]
+            # Same identifiable tau range the single-curve fitter uses.
+            maturities = np.asarray(usable.columns, dtype=float)
+            (tau_lo, tau_hi), = model_cls()._effective_decay_bounds(maturities)
+            tau = self._panel_profile_tau(usable, (tau_lo, tau_hi), min_data_points)
         except Exception:
-            tau = _DEFAULT_TAU[bond_key]
+            tau = _DEFAULT_TAU.get(bond_key, 1.37)
             warnings.warn(
                 f"Falling back to default tau={tau} for {bond_key}",
                 RuntimeWarning,
@@ -97,38 +187,28 @@ class YieldCurveAnalyzer:
         tau: float,
         min_data_points: int = 3,
     ) -> pd.DataFrame:
-        """Closed-form vectorized fit. Groups rows by NaN mask, one lstsq per group."""
+        """Closed-form vectorized fit. Groups rows by NaN mask, one lstsq per group.
+
+        Returns columns ``Level, Slope, Curvature, Tau, RMSE`` (RMSE in the
+        same decimal units as the input yields).
+        """
+        columns = _FACTOR_COLUMNS + ["Tau", "RMSE"]
         if yields_df.empty:
-            return pd.DataFrame(columns=["Level", "Slope", "Curvature", "Tau"])
+            return pd.DataFrame(columns=columns)
 
         maturities = np.asarray(yields_df.columns, dtype=float)
         X_full = NelsonSiegelModel.basis(maturities, tau)
         Y = yields_df.to_numpy(dtype=float)
         valid = ~np.isnan(Y)
+        betas, sse = _batch_solve(Y, X_full, valid, min_data_points)
 
-        n_rows, n_cols = Y.shape
-        # Pack each row's mask into a single integer key for fast grouping.
-        powers = np.power(2, np.arange(n_cols, dtype=np.uint64))
-        mask_keys = (valid.astype(np.uint64) * powers).sum(axis=1)
-
-        result = np.full((n_rows, 3), np.nan, dtype=float)
-        for key in np.unique(mask_keys):
-            group_idx = np.where(mask_keys == key)[0]
-            row = valid[group_idx[0]]
-            if row.sum() < min_data_points:
-                continue
-            X_g = X_full[row]
-            Y_g = Y[np.ix_(group_idx, row)]
-            betas, *_ = np.linalg.lstsq(X_g, Y_g.T, rcond=None)
-            result[group_idx] = betas.T
-
-        df = pd.DataFrame(
-            result,
-            index=yields_df.index,
-            columns=["Level", "Slope", "Curvature"],
-        )
+        df = pd.DataFrame(betas, index=yields_df.index, columns=_FACTOR_COLUMNS)
         df = df.dropna(how="any")
         df["Tau"] = float(tau)
+        n_valid = valid.sum(axis=1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rmse = np.sqrt(sse / np.where(n_valid > 0, n_valid, np.nan))
+        df["RMSE"] = pd.Series(rmse, index=yields_df.index).loc[df.index]
         return df
 
     def analyze_historical_factors(
@@ -141,7 +221,7 @@ class YieldCurveAnalyzer:
     ) -> pd.DataFrame:
         """
         Calculate historical Nelson-Siegel factors for a bond type.
-        
+
         Parameters:
         -----------
         bond_type : str
@@ -152,26 +232,22 @@ class YieldCurveAnalyzer:
             End date in 'YYYY-MM-DD' format
         min_data_points : int
             Minimum number of valid data points required for fitting
-        
+
         Returns:
         --------
         pd.DataFrame
-            DataFrame with historical factors (Level, Slope, Curvature, Tau)
-        
+            DataFrame with historical factors (Level, Slope, Curvature, Tau, RMSE)
+
         Raises:
         -------
         ValueError
             If bond_type is not supported or data is insufficient
         """
-        if bond_type.lower() not in ['treasury', 'tips']:
+        bond_key = bond_type.lower()
+        if bond_key not in _BOND_MODELS:
             raise ValueError("bond_type must be 'treasury' or 'tips'")
-        
-        # Get data
-        if bond_type.lower() == 'treasury':
-            data = self.data_manager.get_treasury_data(start_date, end_date)
-        else:
-            data = self.data_manager.get_tips_data(start_date, end_date)
-        
+
+        data = self._get_data(self.data_manager, bond_key, start_date, end_date)
         if data.empty:
             raise ValueError(f"No {bond_type} data available for the specified period")
 
@@ -188,7 +264,7 @@ class YieldCurveAnalyzer:
             )
             print(f"Maturities: {list(data.columns)} years")
 
-        tau = self._estimate_global_tau(bond_type, min_data_points=min_data_points)
+        tau = self._estimate_global_tau(bond_key, min_data_points=min_data_points, data=data)
         factors_df = self._batch_fit_factors(data, tau, min_data_points=min_data_points)
 
         if factors_df.empty:
@@ -201,14 +277,16 @@ class YieldCurveAnalyzer:
                 print(f"Failed dates: {failed} ({100*failed/len(data):.1f}%)")
 
         return factors_df
-    
-    def analyze_single_curve(self, 
-                            bond_type: str,
-                            date: Optional[str] = None,
-                            yields_data: Optional[Dict] = None) -> Dict:
+
+    def analyze_single_curve(
+        self,
+        bond_type: str,
+        date: Optional[str] = None,
+        yields_data: Optional[Dict] = None,
+    ) -> Dict:
         """
         Analyze a single yield curve for a specific date.
-        
+
         Parameters:
         -----------
         bond_type : str
@@ -217,66 +295,59 @@ class YieldCurveAnalyzer:
             Date in 'YYYY-MM-DD' format. If None, uses most recent data.
         yields_data : dict, optional
             Manual yield data as {maturity: yield} pairs
-        
+
         Returns:
         --------
         dict
             Analysis results including factors, fitted yields, and deviations
         """
+        bond_key = bond_type.lower()
+        if bond_key not in _BOND_MODELS:
+            raise ValueError("bond_type must be 'treasury' or 'tips'")
+        model_class = _BOND_MODELS[bond_key]
+
         if yields_data is None:
-            # Get data from data manager
-            if bond_type.lower() == 'treasury':
-                data = self.data_manager.get_treasury_data()
-                model_class = TreasuryNelsonSiegelModel
-            elif bond_type.lower() == 'tips':
-                data = self.data_manager.get_tips_data()
-                model_class = TIPSNelsonSiegelModel
-            else:
-                raise ValueError("bond_type must be 'treasury' or 'tips'")
-            
+            data = self._get_data(self.data_manager, bond_key)
             if date is None:
                 date = data.index[-1]
             else:
                 date = pd.to_datetime(date)
-            
+
             if date not in data.index:
                 raise ValueError(f"Date {date} not found in {bond_type} data")
-            
+
             yields = data.loc[date].dropna()
-            maturities = yields.index.values
-            yields = yields.values
+            maturities = np.asarray(yields.index.values, dtype=float)
+            yields = np.asarray(yields.values, dtype=float)
         else:
-            # Use manual data
-            maturities = np.array(list(yields_data.keys()))
-            yields = np.array(list(yields_data.values()))
-            model_class = TreasuryNelsonSiegelModel if bond_type.lower() == 'treasury' else TIPSNelsonSiegelModel
-        
-        # Fit model
+            maturities = np.array(list(yields_data.keys()), dtype=float)
+            yields = np.array(list(yields_data.values()), dtype=float)
+
         model = model_class()
         model.fit(maturities, yields)
-        
-        # Generate fitted curve
+
         fitted_yields = model.predict(maturities)
         deviations = yields - fitted_yields
-        
-        # Generate smooth curve for plotting
+
         smooth_maturities = np.linspace(maturities.min(), maturities.max(), 100)
         smooth_fitted = model.predict(smooth_maturities)
-        
+
         return {
-            'bond_type': bond_type,
-            'date': date,
-            'factors': model.get_factors(),
-            'maturities': maturities,
-            'observed_yields': yields,
-            'fitted_yields': fitted_yields,
-            'deviations': deviations,
-            'rmse': np.sqrt(np.mean(deviations**2)),
-            'smooth_maturities': smooth_maturities,
-            'smooth_fitted': smooth_fitted,
-            'bond_classification': model.classify_bonds(maturities, yields)
+            "bond_type": bond_type,
+            "date": date,
+            "factors": model.get_factors(),
+            "fit_stats": model.fit_stats(),
+            "maturities": maturities,
+            "observed_yields": yields,
+            "fitted_yields": fitted_yields,
+            "deviations": deviations,
+            "rmse": np.sqrt(np.mean(deviations**2)),
+            "smooth_maturities": smooth_maturities,
+            "smooth_fitted": smooth_fitted,
+            "smooth_forward": model.forward_rate(smooth_maturities),
+            "bond_classification": model.classify_bonds(maturities, yields),
         }
-    
+
     def compare_curves(
         self,
         start_date: Optional[str] = None,
@@ -285,14 +356,14 @@ class YieldCurveAnalyzer:
     ) -> Dict:
         """
         Compare Treasury and TIPS yield curves over time.
-        
+
         Parameters:
         -----------
         start_date : str, optional
             Start date for comparison
         end_date : str, optional
             End date for comparison
-        
+
         Returns:
         --------
         dict
@@ -303,77 +374,67 @@ class YieldCurveAnalyzer:
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             treasury_future = executor.submit(
-                self.analyze_historical_factors,
-                "treasury",
-                start_date,
-                end_date,
-                3,
-                verbose,
+                self.analyze_historical_factors, "treasury", start_date, end_date, 3, verbose
             )
             tips_future = executor.submit(
-                self.analyze_historical_factors,
-                "tips",
-                start_date,
-                end_date,
-                3,
-                verbose,
+                self.analyze_historical_factors, "tips", start_date, end_date, 3, verbose
             )
             treasury_factors = treasury_future.result()
             tips_factors = tips_future.result()
-        
-        # Align dates
+
         common_dates = treasury_factors.index.intersection(tips_factors.index)
-        
         if len(common_dates) == 0:
             raise ValueError("No common dates found between Treasury and TIPS data")
-        
+
         treasury_aligned = treasury_factors.loc[common_dates]
         tips_aligned = tips_factors.loc[common_dates]
-        
-        # Calculate statistics
+
         factor_correlations = {}
         factor_differences = {}
-        
-        for factor in ['Level', 'Slope', 'Curvature', 'Tau']:
+        for factor in _FACTOR_COLUMNS + ["Tau"]:
             if factor in treasury_aligned.columns and factor in tips_aligned.columns:
                 tsy_factor = treasury_aligned[factor]
                 tips_factor = tips_aligned[factor]
-                
-                factor_correlations[factor] = tsy_factor.corr(tips_factor)
+                # Tau is constant per bond type under the panel estimate, so its
+                # correlation is undefined; report it only for the betas.
+                if factor != "Tau":
+                    factor_correlations[factor] = tsy_factor.corr(tips_factor)
                 factor_differences[factor] = {
-                    'mean_diff': (tsy_factor - tips_factor).mean(),
-                    'std_diff': (tsy_factor - tips_factor).std(),
-                    'mean_tsy': tsy_factor.mean(),
-                    'mean_tips': tips_factor.mean(),
-                    'std_tsy': tsy_factor.std(),
-                    'std_tips': tips_factor.std()
+                    "mean_diff": (tsy_factor - tips_factor).mean(),
+                    "std_diff": (tsy_factor - tips_factor).std(),
+                    "mean_tsy": tsy_factor.mean(),
+                    "mean_tips": tips_factor.mean(),
+                    "std_tsy": tsy_factor.std(),
+                    "std_tips": tips_factor.std(),
                 }
-        
+
         return {
-            'treasury_factors': treasury_factors,
-            'tips_factors': tips_factors,
-            'common_dates': common_dates,
-            'treasury_aligned': treasury_aligned,
-            'tips_aligned': tips_aligned,
-            'correlations': factor_correlations,
-            'differences': factor_differences,
-            'summary_stats': {
-                'total_observations': len(common_dates),
-                'date_range': {
-                    'start': common_dates[0].strftime('%Y-%m-%d'),
-                    'end': common_dates[-1].strftime('%Y-%m-%d')
-                }
-            }
+            "treasury_factors": treasury_factors,
+            "tips_factors": tips_factors,
+            "common_dates": common_dates,
+            "treasury_aligned": treasury_aligned,
+            "tips_aligned": tips_aligned,
+            "correlations": factor_correlations,
+            "differences": factor_differences,
+            "summary_stats": {
+                "total_observations": len(common_dates),
+                "date_range": {
+                    "start": common_dates[0].strftime("%Y-%m-%d"),
+                    "end": common_dates[-1].strftime("%Y-%m-%d"),
+                },
+            },
         }
-    
-    def generate_report(self, 
-                       bond_type: str,
-                       start_date: Optional[str] = None,
-                       end_date: Optional[str] = None,
-                       save_data: bool = True) -> Dict:
+
+    def generate_report(
+        self,
+        bond_type: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        save_data: bool = True,
+    ) -> Dict:
         """
         Generate a comprehensive analysis report.
-        
+
         Parameters:
         -----------
         bond_type : str
@@ -384,50 +445,44 @@ class YieldCurveAnalyzer:
             End date for analysis
         save_data : bool
             Whether to save results to CSV files
-        
+
         Returns:
         --------
         dict
             Comprehensive analysis report
         """
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        if bond_type.lower() == 'both':
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if bond_type.lower() == "both":
             comparison = self.compare_curves(start_date, end_date)
-            
+
             if save_data:
-                comparison['treasury_factors'].to_csv(f'treasury_factors_{timestamp}.csv')
-                comparison['tips_factors'].to_csv(f'tips_factors_{timestamp}.csv')
-                
-                # Save summary statistics
-                summary_df = pd.DataFrame(comparison['differences']).T
-                summary_df.to_csv(f'factor_comparison_{timestamp}.csv')
-            
+                comparison["treasury_factors"].to_csv(f"treasury_factors_{timestamp}.csv")
+                comparison["tips_factors"].to_csv(f"tips_factors_{timestamp}.csv")
+                summary_df = pd.DataFrame(comparison["differences"]).T
+                summary_df.to_csv(f"factor_comparison_{timestamp}.csv")
+
             return comparison
-        
-        else:
-            factors = self.analyze_historical_factors(bond_type, start_date, end_date)
-            
-            # Calculate summary statistics
-            summary_stats = {
-                'factor_statistics': factors.describe().to_dict(),
-                'factor_correlations': factors.corr().to_dict(),
-                'total_observations': len(factors),
-                'date_range': {
-                    'start': factors.index[0].strftime('%Y-%m-%d'),
-                    'end': factors.index[-1].strftime('%Y-%m-%d')
-                }
-            }
-            
-            if save_data:
-                factors.to_csv(f'{bond_type}_factors_{timestamp}.csv')
-                
-                # Save summary
-                summary_df = pd.DataFrame(summary_stats['factor_statistics'])
-                summary_df.to_csv(f'{bond_type}_summary_{timestamp}.csv')
-            
-            return {
-                'bond_type': bond_type,
-                'factors': factors,
-                'summary_stats': summary_stats
-            }
+
+        factors = self.analyze_historical_factors(bond_type, start_date, end_date)
+
+        summary_stats = {
+            "factor_statistics": factors.describe().to_dict(),
+            "factor_correlations": factors[_FACTOR_COLUMNS].corr().to_dict(),
+            "total_observations": len(factors),
+            "date_range": {
+                "start": factors.index[0].strftime("%Y-%m-%d"),
+                "end": factors.index[-1].strftime("%Y-%m-%d"),
+            },
+        }
+
+        if save_data:
+            factors.to_csv(f"{bond_type}_factors_{timestamp}.csv")
+            summary_df = pd.DataFrame(summary_stats["factor_statistics"])
+            summary_df.to_csv(f"{bond_type}_summary_{timestamp}.csv")
+
+        return {
+            "bond_type": bond_type,
+            "factors": factors,
+            "summary_stats": summary_stats,
+        }

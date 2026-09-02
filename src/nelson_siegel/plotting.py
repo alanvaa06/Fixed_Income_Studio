@@ -11,9 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
 from typing import Dict, Optional, List, Tuple, Union
-import warnings
 
-warnings.filterwarnings('ignore')
 
 
 class YieldCurvePlotter:

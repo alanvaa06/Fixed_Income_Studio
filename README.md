@@ -21,6 +21,8 @@ A Python toolkit for **Nelson-Siegel yield-curve modelling** of nominal Treasury
 - **Treasury & TIPS** out of the box, with FRED-API hookup or realistic synthetic fallback.
 - **Educational mode** &mdash; built-in "Learn the Model" tab, slider-based parameter lab, and curve-shape presets (normal / inverted / humped / flat).
 - **Historical factor analysis** with breakeven inflation derived from the level differential.
+- **Robust fitting** &mdash; profile-likelihood search over the decay parameter with closed-form betas (deterministic, no initial guess), fit diagnostics, instantaneous forward rates and discount factors.
+- **Svensson extension** (`SvenssonModel`) built on the same fitting seam; see [`docs/audit-2026-09-02.md`](docs/audit-2026-09-02.md) for how to add further models.
 - **Type-hinted**, **tested**, and **packaged** for `pip install -e .`.
 
 ## Table of contents
@@ -102,7 +104,7 @@ All endpoints are JSON. Yields are returned in **percent** (e.g. `4.25`), maturi
 | `POST /api/fit` | Fit β₀, β₁, β₂, τ to user-supplied (maturity, yield) points |
 | `POST /api/curve` | Evaluate the NS function at custom parameters (no fit) |
 | `GET  /api/snapshot?bond_type=treasury\|tips` | Latest available curve + fitted factors |
-| `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD` | Daily factor history |
+| `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD` | Factor history (daily up to one year, weekly beyond) with per-date fit RMSE |
 | `GET  /api/compare?start=...&end=...` | Treasury vs TIPS factor history + breakevens |
 
 ### Example: fit a curve via curl
@@ -136,7 +138,21 @@ model.fit(
     yields=np.array([0.0495, 0.0465, 0.0430, 0.0395, 0.0405, 0.0435]),
 )
 print(model.get_factors())            # decimal units (0.04 == 4%)
-print(model.predict([3, 7, 20]))      # forecast yields at custom maturities
+print(model.predict([3, 7, 20]))      # yields at custom maturities
+print(model.forward_rate([3, 7, 20])) # instantaneous forward rates
+print(model.discount_factor([1, 10])) # exp(-t * y(t)), continuous compounding
+print(model.fit_stats())              # sse, rmse, r_squared, decay_at_bound, ...
+
+# Legacy joint non-linear least squares is still available:
+model.fit(maturities, yields, method="curve_fit")
+
+# Svensson (two decays, second curvature hump)
+from nelson_siegel import SvenssonModel
+svensson = SvenssonModel().fit(
+    maturities=np.array([0.25, 1, 2, 5, 7, 10, 20, 30]),
+    yields=np.array([0.0495, 0.0465, 0.0430, 0.0395, 0.0398, 0.0405, 0.0430, 0.0435]),
+)
+print(svensson.get_factors())         # Level, Slope, Curvature, Curvature2, Tau, Tau2
 
 # 2. High-level analyzer
 analyzer = YieldCurveAnalyzer()
@@ -146,12 +162,20 @@ result  = analyzer.analyze_single_curve(
 )
 print("RMSE (decimal):", result["rmse"])
 
-# 3. Historical factors
+# 3. Historical factors (one panel-estimated tau per bond type, closed-form
+#    Level/Slope/Curvature per date, plus per-date fit RMSE)
 factors = analyzer.analyze_historical_factors(
     "treasury", start_date="2022-01-01", end_date="2024-12-31",
 )
-factors.plot()
+factors[["Level", "Slope", "Curvature"]].plot()
 ```
+
+Fitting notes:
+
+- `fit()` profiles the sum of squared errors over &tau; on a log-spaced grid, solves &beta;<sub>0..2</sub> in closed form at each point, and refines the best local minima with a bounded search. It is deterministic and never worse (in SSE) than the legacy `curve_fit` path.
+- &tau; is searched only where the curvature hump (&asymp; 1.8&tau;) falls inside the observed maturity range, which prevents the collinear blow-ups that otherwise appear on long-only curves. `fit_stats()["decay_at_bound"]` tells you when that constraint binds; set `model.hump_location_factor = None` to disable it.
+- Historical factors follow the Diebold-Li convention: one &tau; per bond type, estimated on a sample of up to 48 curves, then a vectorised least-squares solve per date. Ranges longer than a year are resampled to weekly.
+- Downloads are memoised per date window on each downloader; call `analyzer.data_manager.clear_cache()` to refetch.
 
 ## Jupyter notebook
 
@@ -179,7 +203,7 @@ A free FRED API key is available at <https://fred.stlouisfed.org/docs/api/api_ke
 ```
 .
 ├── src/nelson_siegel/
-│   ├── model.py            # Core NS model + Treasury/TIPS subclasses
+│   ├── model.py            # NS + Svensson models, profile fitter, forwards/discounts
 │   ├── data.py             # FRED + synthetic data downloaders
 │   ├── analysis.py         # YieldCurveAnalyzer (fit / history / compare)
 │   ├── plotting.py         # matplotlib visualisations
@@ -193,7 +217,7 @@ A free FRED API key is available at <https://fred.stlouisfed.org/docs/api/api_ke
 │   └── run_analysis.py     # CLI batch analysis
 ├── examples/               # basic_usage.py, legacy script, notebook
 ├── tests/                  # pytest suite
-├── docs/                   # extended docs (installation, notebooks)
+├── docs/                   # extended docs (installation, notebooks, 2026-09 audit)
 └── BEST_PRACTICES.md       # contribution + production guidance
 ```
 

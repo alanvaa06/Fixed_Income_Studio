@@ -97,6 +97,72 @@ def test_estimate_global_tau_returns_finite_value():
     assert analyzer._global_tau["treasury"] == tau
 
 
+def test_estimate_global_tau_reuses_supplied_data(monkeypatch):
+    """Passing the already-downloaded frame must not trigger a second download."""
+    analyzer = YieldCurveAnalyzer()
+    frame = _synthetic_yields_frame(30, tau=1.5)
+    calls = {"n": 0}
+
+    def boom(*args, **kwargs):
+        calls["n"] += 1
+        raise AssertionError("download should not happen")
+
+    monkeypatch.setattr(analyzer.data_manager, "get_treasury_data", boom)
+    tau = analyzer._estimate_global_tau("treasury", data=frame)
+    assert calls["n"] == 0
+    assert np.isclose(tau, 1.5, atol=0.02)
+
+
+def test_panel_profile_tau_recovers_common_tau():
+    """Pooled profile over many curves recovers the shared decay parameter."""
+    frame = _synthetic_yields_frame(120, tau=2.3, seed=11)
+    tau = YieldCurveAnalyzer._panel_profile_tau(frame, (0.05, 10.0))
+    assert np.isclose(tau, 2.3, atol=0.01)
+
+
+def test_panel_profile_tau_more_stable_than_single_curve():
+    """Panel estimate should be closer to truth than a noisy single-date fit on average."""
+    rng = np.random.default_rng(5)
+    frame = _synthetic_yields_frame(80, tau=1.8, seed=2)
+    noisy = frame + rng.normal(0, 3e-4, frame.shape)
+    panel_tau = YieldCurveAnalyzer._panel_profile_tau(noisy, (0.05, 10.0))
+    single_errors = []
+    for _, row in noisy.iloc[::10].iterrows():
+        m = NelsonSiegelModel().fit(noisy.columns.values, row.values)
+        single_errors.append(abs(m.parameters["tau"] - 1.8))
+    assert abs(panel_tau - 1.8) <= np.mean(single_errors) + 1e-9
+
+
+def test_batch_fit_factors_reports_rmse():
+    frame = _synthetic_yields_frame(10, tau=1.5)
+    batch = YieldCurveAnalyzer._batch_fit_factors(frame, 1.5)
+    assert "RMSE" in batch.columns
+    assert (batch["RMSE"] < 1e-8).all()
+    frame_noisy = frame + 1e-3
+    frame_noisy.iloc[:, 0] += 5e-3
+    batch_noisy = YieldCurveAnalyzer._batch_fit_factors(frame_noisy, 1.5)
+    assert (batch_noisy["RMSE"] > 1e-4).all()
+
+
+def test_analyze_single_curve_exposes_fit_stats_and_forward():
+    analyzer = YieldCurveAnalyzer()
+    result = analyzer.analyze_single_curve(
+        "treasury",
+        yields_data={0.5: 0.045, 1.0: 0.043, 2.0: 0.040, 5.0: 0.038, 10.0: 0.040, 30.0: 0.043},
+    )
+    assert result["fit_stats"]["method"] == "profile"
+    assert len(result["smooth_forward"]) == len(result["smooth_maturities"])
+    assert np.all(np.isfinite(result["smooth_forward"]))
+
+
+def test_compare_curves_skips_tau_correlation():
+    analyzer = YieldCurveAnalyzer()
+    result = analyzer.compare_curves("2024-01-01", "2025-12-31")
+    assert "Tau" not in result["correlations"]
+    assert set(result["correlations"]) == {"Level", "Slope", "Curvature"}
+    assert "Tau" in result["differences"]
+
+
 def test_factor_time_series_parity_with_variable_tau():
     """New fixed-tau historical fit should track the per-date variable-tau path."""
     from nelson_siegel.model import TreasuryNelsonSiegelModel

@@ -16,7 +16,7 @@ GET  /api/health             Health check
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -24,7 +24,6 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request
 
 from ..analysis import YieldCurveAnalyzer
-from ..data import DataManager
 from ..model import (
     NelsonSiegelModel,
     TIPSNelsonSiegelModel,
@@ -45,6 +44,14 @@ def _smooth_grid(min_mat: float, max_mat: float, points: int = 200) -> np.ndarra
     lo = max(0.05, float(min_mat))
     hi = max(lo + 0.5, float(max_mat))
     return np.linspace(lo, hi, points)
+
+
+def _json_float(value: Any) -> Optional[float]:
+    """Return a JSON-safe float (NaN/None -> null)."""
+    if value is None:
+        return None
+    value = float(value)
+    return None if np.isnan(value) else value
 
 
 def _to_pct(arr: np.ndarray) -> List[float]:
@@ -104,8 +111,11 @@ def create_app(
     def configure_data_source(api_key: Optional[str]) -> None:
         normalized_key = api_key.strip() if api_key else None
         cancel_warmup(app)
-        app.config["ANALYZER"] = YieldCurveAnalyzer(fred_api_key=normalized_key)
-        app.config["DATA_MANAGER"] = DataManager(fred_api_key=normalized_key)
+        analyzer = YieldCurveAnalyzer(fred_api_key=normalized_key)
+        app.config["ANALYZER"] = analyzer
+        # Share one memoised data manager so snapshot, tau estimation and
+        # historical fits never download the same window twice.
+        app.config["DATA_MANAGER"] = analyzer.data_manager
         app.config["FRED_KEY_PRESENT"] = bool(normalized_key)
         app.config["FACTORS_CACHE"] = FactorsCache()
         if enable_warmup:
@@ -126,7 +136,7 @@ def create_app(
             {
                 "status": "ok",
                 "fred_api_key": app.config["FRED_KEY_PRESENT"],
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }
         )
 
@@ -178,6 +188,7 @@ def create_app(
         smooth_y = model.predict(smooth_x)
         classifications = model.classify_bonds(maturities, yields)
         rmse = float(np.sqrt(np.mean(deviations ** 2)))
+        stats = model.fit_stats()
 
         return jsonify(
             {
@@ -188,9 +199,12 @@ def create_app(
                 "fitted": _to_pct(fitted),
                 "deviations_bps": [float(d) * 10000.0 for d in deviations],
                 "rmse_bps": rmse * 10000.0,
+                "r_squared": _json_float(stats.get("r_squared")),
+                "decay_at_bound": bool(stats.get("decay_at_bound", False)),
                 "smooth": {
                     "maturities": smooth_x.tolist(),
                     "yields": _to_pct(smooth_y),
+                    "forward": _to_pct(model.forward_rate(smooth_x)),
                 },
                 "classification": classifications,
             }
@@ -265,6 +279,7 @@ def create_app(
                 "smooth": {
                     "maturities": smooth_x.tolist(),
                     "yields": _to_pct(smooth_y),
+                    "forward": _to_pct(model.forward_rate(smooth_x)),
                 },
                 "rmse_bps": float(np.sqrt(np.mean((yields - fitted) ** 2)) * 10000.0),
                 "is_synthetic": not app.config["FRED_KEY_PRESENT"],
@@ -300,6 +315,10 @@ def create_app(
         slope = (factors["Slope"].astype(float) * 100.0)
         curvature = (factors["Curvature"].astype(float) * 100.0)
         tau = factors["Tau"].astype(float)
+        if "RMSE" in factors.columns:
+            rmse_bps = factors["RMSE"].astype(float) * 10000.0
+        else:
+            rmse_bps = pd.Series(np.nan, index=factors.index)
         return jsonify(
             {
                 "bond_type": bond_type,
@@ -308,6 +327,7 @@ def create_app(
                 "slope": slope.tolist(),
                 "curvature": curvature.tolist(),
                 "tau": tau.tolist(),
+                "rmse_bps": [None if np.isnan(v) else float(v) for v in rmse_bps],
                 "is_synthetic": not app.config["FRED_KEY_PRESENT"],
                 "summary": {
                     "n_observations": int(len(factors)),
@@ -316,6 +336,8 @@ def create_app(
                     "level_mean": float(level.mean()),
                     "slope_mean": float(slope.mean()),
                     "curvature_mean": float(curvature.mean()),
+                    "tau": float(tau.iloc[0]),
+                    "rmse_bps_mean": None if rmse_bps.isna().all() else float(rmse_bps.mean()),
                 },
             }
         )
