@@ -278,7 +278,7 @@ def create_app(
             {"id": "treasury.gov", "label": SOURCE_LABELS["treasury.gov"], "needs_key": False},
             {"id": "fred-public-csv", "label": SOURCE_LABELS["fred-public-csv"], "needs_key": False},
             {"id": "fed-gsw", "label": SOURCE_LABELS["fed-gsw"], "needs_key": False},
-            {"id": "nyfed-acm", "label": "NY Fed ACM term premia via FRED (THREEFYTP*)", "needs_key": False},
+            {"id": "fed-kim-wright", "label": "Fed Board Kim-Wright term premia via FRED (THREEFYTP*)", "needs_key": False},
             {"id": SOURCE_SYNTHETIC, "label": SOURCE_LABELS[SOURCE_SYNTHETIC], "needs_key": False},
         ]
         return jsonify(info)
@@ -898,9 +898,9 @@ def create_app(
             benchmark_block = None if bench is None else {"dates": _dates(bench.index), **_frame_pct(bench)}
             benchmark_stats = {_mkey(m): v for m, v in r["benchmark_stats"].items()}
             benchmark_note = (
-                "NY Fed ACM term premia (FRED THREEFYTP1-10) overlaid on the same maturities."
+                "Fed Board Kim-Wright term premia (FRED THREEFYTP1-10) overlaid on the same maturities. Kim-Wright is anchored on survey forecasts, so it is smoother than ACM by construction: a 50-100 bps gap is expected, not a fitting error."
                 if bench is not None else
-                "NY Fed ACM benchmark unavailable: no live FRED source answered (there is no synthetic stand-in)."
+                "Kim-Wright benchmark unavailable: no live FRED source answered (there is no synthetic stand-in)."
             )
             regressions = {
                 name: {_mkey(m): vals for m, vals in table.items()} for name, table in r["regressions"].items()

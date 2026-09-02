@@ -585,16 +585,20 @@ class PolicyRateDownloader(BaseDataDownloader):
         return frame.iloc[:, 0].rename("policy_rate")
 
 
-class ACMBenchmarkDownloader(BaseDataDownloader):
+class KimWrightBenchmarkDownloader(BaseDataDownloader):
     """
-    New York Fed ACM term premia (Adrian, Crump and Moench), the published
-    benchmark for this package's own ACM estimate.
+    Federal Reserve Board Kim-Wright (2005) term premia, the published
+    benchmark this package overlays on its own ACM estimate.
 
-    The series are redistributed by FRED as ``THREEFYTP1`` ... ``THREEFYTP10``
-    (term premium on 1- to 10-year zero-coupon bonds, percent, daily), so they
+    FRED distributes them as ``THREEFYTP1`` ... ``THREEFYTP10`` (term premium
+    on 1- to 10-year zero-coupon bonds, percent, daily, since 1990), so they
     come through the FRED API or the key-less CSV export like any other series.
-    There is no synthetic stand-in: offline the frame is empty, and callers
-    should say the benchmark is unavailable rather than invent one.
+    Despite a common misattribution these are *not* the New York Fed ACM
+    series (which FRED does not carry). Kim-Wright is a three-factor affine
+    model anchored on survey forecasts of the 3-month bill, so its premia are
+    smoother than ACM's by construction: a 50-100 bps gap is normal, not a
+    fitting error. There is no synthetic stand-in: offline the frame is empty,
+    and callers should say the benchmark is unavailable rather than invent one.
     """
 
     series = {f"{n}Y": f"THREEFYTP{n}" for n in range(1, 11)}
@@ -607,6 +611,10 @@ class ACMBenchmarkDownloader(BaseDataDownloader):
     def _create_synthetic_data(self, start_date: str, end_date: str) -> pd.DataFrame:
         """No synthetic benchmark: an empty frame with the expected columns."""
         return pd.DataFrame(columns=list(self.maturity_mapping.values()), index=pd.DatetimeIndex([]), dtype=float)
+
+
+#: Deprecated alias kept for callers written when the series was mislabelled as ACM.
+ACMBenchmarkDownloader = KimWrightBenchmarkDownloader
 
 
 class FedGSWDownloader:
@@ -801,7 +809,7 @@ class DataManager:
         self.treasury_downloader = TreasuryDataDownloader(fred_api_key, **kw)
         self.tips_downloader = TIPSDataDownloader(fred_api_key, **kw)
         self.policy_downloader = PolicyRateDownloader(fred_api_key, **kw)
-        self.acm_downloader = ACMBenchmarkDownloader(fred_api_key, **kw)
+        self.benchmark_downloader = KimWrightBenchmarkDownloader(fred_api_key, **kw)
         self.gsw_downloader = FedGSWDownloader(kind="nominal", public_sources=self.public_sources)
         self.gsw_tips_downloader = FedGSWDownloader(kind="tips", public_sources=self.public_sources)
 
@@ -816,7 +824,7 @@ class DataManager:
 
     def clear_cache(self) -> None:
         """Drop memoised downloads on every downloader."""
-        for dl in (self.treasury_downloader, self.tips_downloader, self.policy_downloader, self.acm_downloader):
+        for dl in (self.treasury_downloader, self.tips_downloader, self.policy_downloader, self.benchmark_downloader):
             dl.clear_cache()
         self.gsw_downloader.clear_cache()
         self.gsw_tips_downloader.clear_cache()
@@ -828,7 +836,7 @@ class DataManager:
             "tips": self.tips_downloader.last_source,
             "policy_rate": self.policy_downloader.last_source,
             "gsw": self.gsw_downloader.last_source,
-            "acm_benchmark": self.acm_downloader.last_source,
+            "kim_wright": self.benchmark_downloader.last_source,
         }
 
     def get_treasury_data(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
@@ -852,9 +860,9 @@ class DataManager:
         """Effective federal funds rate (decimal) as a daily Series."""
         return self.policy_downloader.download_series(start_date, end_date)
 
-    def get_acm_benchmark(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
-        """NY Fed ACM term premia (decimals) by maturity 1-10 years; empty when no live source answered."""
-        return self.acm_downloader.download(start_date, end_date)
+    def get_term_premium_benchmark(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
+        """Fed Board Kim-Wright term premia (decimals) by maturity 1-10 years; empty when no live source answered."""
+        return self.benchmark_downloader.download(start_date, end_date)
 
     def get_zero_curve(
         self,
@@ -876,6 +884,7 @@ class DataManager:
 
 
 __all__ = [
+    "KimWrightBenchmarkDownloader",
     "ACMBenchmarkDownloader",
     "BaseDataDownloader",
     "DataManager",

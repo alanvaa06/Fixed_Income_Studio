@@ -297,7 +297,7 @@ def test_gsw_synthetic_fallback_has_long_history():
 
 def test_data_manager_reports_sources_and_new_datasets():
     dm = DataManager(public_sources=False)
-    assert dm.source_summary() == {"treasury": None, "tips": None, "policy_rate": None, "gsw": None, "acm_benchmark": None}
+    assert dm.source_summary() == {"treasury": None, "tips": None, "policy_rate": None, "gsw": None, "kim_wright": None}
     dm.get_bond_data("treasury", "2025-01-01", "2025-02-01")
     dm.get_policy_rate("2025-01-01", "2025-02-01")
     dm.get_zero_curve([1, 10], "2025-01-01", "2025-02-01")
@@ -311,27 +311,29 @@ def test_data_manager_reports_sources_and_new_datasets():
     dm.clear_cache()
 
 
-def test_acm_benchmark_downloader_via_fred_csv_and_offline(monkeypatch):
-    from nelson_siegel.data import ACMBenchmarkDownloader
+def test_kim_wright_benchmark_downloader_via_fred_csv_and_offline(monkeypatch):
+    from nelson_siegel.data import ACMBenchmarkDownloader, KimWrightBenchmarkDownloader
+
+    assert ACMBenchmarkDownloader is KimWrightBenchmarkDownloader  # deprecated alias
 
     reset_source_cooldowns()
-    assert ACMBenchmarkDownloader.series["10Y"] == "THREEFYTP10" and ACMBenchmarkDownloader.series["1Y"] == "THREEFYTP1"
+    assert KimWrightBenchmarkDownloader.series["10Y"] == "THREEFYTP10" and KimWrightBenchmarkDownloader.series["1Y"] == "THREEFYTP1"
 
     def fake_get(self, url, params=None):
         assert params["id"].startswith("THREEFYTP1,THREEFYTP2")
         return "observation_date,THREEFYTP1,THREEFYTP2,THREEFYTP5,THREEFYTP10\n2026-07-31,0.10,0.25,0.60,1.05\n2026-08-31,0.12,.,0.62,1.10\n"
 
-    monkeypatch.setattr(ACMBenchmarkDownloader, "_http_get", fake_get)
-    dl = ACMBenchmarkDownloader(public_sources=True)
+    monkeypatch.setattr(KimWrightBenchmarkDownloader, "_http_get", fake_get)
+    dl = KimWrightBenchmarkDownloader(public_sources=True)
     frame = dl.download("2026-07-01", "2026-08-31")
     assert dl.last_source == SOURCE_FRED_CSV
     assert list(frame.columns) == [1.0, 2.0, 5.0, 10.0]  # only the series the export returned
     assert np.isclose(frame.loc["2026-08-31", 10.0], 0.011) and np.isnan(frame.loc["2026-08-31", 2.0])
 
-    offline = ACMBenchmarkDownloader(public_sources=False)
+    offline = KimWrightBenchmarkDownloader(public_sources=False)
     empty = offline.download("2026-07-01", "2026-08-31")
     assert empty.empty and list(empty.columns) == [float(n) for n in range(1, 11)]
     assert offline.last_source == SOURCE_SYNTHETIC
     dm = DataManager(public_sources=False)
-    assert dm.get_acm_benchmark("2026-07-01", "2026-08-31").empty
-    assert "acm_benchmark" in dm.source_summary()
+    assert dm.get_term_premium_benchmark("2026-07-01", "2026-08-31").empty
+    assert "kim_wright" in dm.source_summary()

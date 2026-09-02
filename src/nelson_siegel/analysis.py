@@ -879,7 +879,7 @@ class YieldCurveAnalyzer:
                 except ValueError:
                     continue
         term_premium = acm.term_premium(mats)
-        benchmark, benchmark_stats = self._acm_benchmark(term_premium, start_date, end_date)
+        benchmark, benchmark_stats = self._kim_wright_benchmark(term_premium, start_date, end_date)
         return {
             "source": source.lower(),
             "panel": panel,
@@ -896,21 +896,22 @@ class YieldCurveAnalyzer:
             "sources": self.data_manager.source_summary(),
         }
 
-    def _acm_benchmark(
+    def _kim_wright_benchmark(
         self,
         term_premium: pd.DataFrame,
         start_date: Optional[str],
         end_date: Optional[str],
     ) -> Tuple[Optional[pd.DataFrame], Dict[float, Dict[str, float]]]:
-        """NY Fed ACM premia (monthly) on the maturities we estimated, with agreement statistics.
+        """Fed Board Kim-Wright premia (monthly) on the maturities we estimated, with agreement statistics.
 
         Returns ``(benchmark, stats)``; ``benchmark`` is ``None`` when no live
         source served the series (there is deliberately no synthetic stand-in).
         ``stats[m]`` holds the overlap count, correlation, mean gap (ours minus
-        NY Fed, bps), RMSE of the gap and the latest values.
+        Kim-Wright, bps), RMSE of the gap and the latest values. Kim-Wright is
+        survey-anchored and smoother than ACM, so a 50-100 bps RMSE is expected.
         """
         try:
-            raw = self.data_manager.get_acm_benchmark(start_date, end_date)
+            raw = self.data_manager.get_term_premium_benchmark(start_date, end_date)
         except Exception:  # noqa: BLE001 - the benchmark is optional
             return None, {}
         if raw is None or raw.empty:
@@ -922,17 +923,17 @@ class YieldCurveAnalyzer:
         benchmark = monthly[cols].dropna(how="all")
         stats: Dict[float, Dict[str, float]] = {}
         for m in cols:
-            joined = pd.concat([term_premium[m].rename("ours"), benchmark[m].rename("nyfed")], axis=1, join="inner").dropna()
+            joined = pd.concat([term_premium[m].rename("ours"), benchmark[m].rename("kim_wright")], axis=1, join="inner").dropna()
             if len(joined) < 12:
                 continue
-            gap = joined["ours"] - joined["nyfed"]
+            gap = joined["ours"] - joined["kim_wright"]
             stats[float(m)] = {
                 "n": int(len(joined)),
-                "correlation": float(joined["ours"].corr(joined["nyfed"])),
+                "correlation": float(joined["ours"].corr(joined["kim_wright"])),
                 "mean_gap_bps": float(gap.mean() * 1e4),
                 "rmse_bps": float(np.sqrt((gap**2).mean()) * 1e4),
                 "latest_ours_pct": float(joined["ours"].iloc[-1] * 100.0),
-                "latest_benchmark_pct": float(joined["nyfed"].iloc[-1] * 100.0),
+                "latest_benchmark_pct": float(joined["kim_wright"].iloc[-1] * 100.0),
                 "latest_date": joined.index[-1].strftime("%Y-%m-%d"),
             }
         return benchmark, stats

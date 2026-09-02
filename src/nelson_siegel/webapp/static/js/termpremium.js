@@ -31,10 +31,10 @@
     const focusKey = Object.keys(bs).includes(String(state.tpFocus)) ? String(state.tpFocus) : Object.keys(bs)[0];
     if (focusKey) {
       const b = bs[focusKey];
-      tiles.push(S.metricTile(`vs NY Fed ACM · ${S.tenorLabel(focusKey)}`, `ρ ${b.correlation.toFixed(2)}`,
+      tiles.push(S.metricTile(`vs Kim-Wright · ${S.tenorLabel(focusKey)}`, `ρ ${b.correlation.toFixed(2)}`,
         `mean gap ${S.signed(b.mean_gap_bps, 0, " bps")} over ${b.n} months`, Math.abs(b.mean_gap_bps) > 50 ? "neg" : ""));
     } else {
-      tiles.push(S.metricTile("vs NY Fed ACM", "n/a", j.benchmark ? "no overlapping months" : "needs a live FRED source"));
+      tiles.push(S.metricTile("vs Kim-Wright", "n/a", j.benchmark ? "no overlapping months" : "needs a live FRED source"));
     }
     const host = $("#tp-metrics");
     host.innerHTML = tiles.join("");
@@ -53,8 +53,8 @@
           line: { color, width: 1.2, dash: "dot" }, hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} DL</extra>` });
       }
       if (j.benchmark && j.benchmark[String(m)]) {
-        traces.push({ x: j.benchmark.dates, y: j.benchmark[String(m)].map((v) => (v == null ? null : v * 100)), name: `${S.tenorLabel(m)} NY Fed ACM`, mode: "lines",
-          line: { color, width: 2.2, dash: "dashdot" }, opacity: 0.8, hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} NY Fed</extra>` });
+        traces.push({ x: j.benchmark.dates, y: j.benchmark[String(m)].map((v) => (v == null ? null : v * 100)), name: `${S.tenorLabel(m)} Kim-Wright`, mode: "lines",
+          line: { color, width: 2.2, dash: "dashdot" }, opacity: 0.8, hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} Kim-Wright</extra>` });
       }
     });
     S.plot("chart-tp-history", traces, S.layoutWith("Date", "Term premium (bps)", { yaxis: { zeroline: true } }));
@@ -89,7 +89,7 @@
     S.renderTable($("#tp-benchmark"), [
       { key: "m", label: "Maturity", fmt: (v) => S.tenorLabel(v) },
       { key: "latest_ours_pct", label: "Ours (latest)", fmt: (v) => S.signed(v * 100, 0, " bps"), align: "num" },
-      { key: "latest_benchmark_pct", label: "NY Fed (latest)", fmt: (v) => S.signed(v * 100, 0, " bps"), align: "num" },
+      { key: "latest_benchmark_pct", label: "Kim-Wright (latest)", fmt: (v) => S.signed(v * 100, 0, " bps"), align: "num" },
       { key: "correlation", label: "Correlation", fmt: (v) => v.toFixed(3), align: "num", cls: (v) => (v > 0.8 ? "best" : v < 0.5 ? "neg" : "") },
       { key: "mean_gap_bps", label: "Mean gap", fmt: (v) => S.signed(v, 0, " bps"), align: "num", cls: (v) => S.heatClass(v, 60) },
       { key: "rmse_bps", label: "RMSE of gap", fmt: (v) => S.fmtBps(v, 0), align: "num" },
@@ -160,7 +160,7 @@
       const byDate = {};
       j.benchmark.dates.forEach((d, i) => { byDate[d] = i; });
       const bkeys = j.maturities.filter((m) => j.benchmark[String(m)]);
-      bkeys.forEach((m) => header.push(`nyfed_tp_${S.tenorLabel(m)}_pct`));
+      bkeys.forEach((m) => header.push(`kim_wright_tp_${S.tenorLabel(m)}_pct`));
       rows.forEach((row, i) => {
         const bi = byDate[tp.dates[i]];
         bkeys.forEach((m) => row.push(bi == null ? "" : j.benchmark[String(m)][bi]));

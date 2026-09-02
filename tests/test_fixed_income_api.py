@@ -234,7 +234,7 @@ def test_term_premium_benchmark_is_optional_and_reports_agreement(analyzer, monk
     assert offline["benchmark"] is None and offline["benchmark_stats"] == {}
 
     fake = _fake_benchmark_from(analyzer)
-    monkeypatch.setattr(analyzer.data_manager, "get_acm_benchmark", lambda *a, **k: fake)
+    monkeypatch.setattr(analyzer.data_manager, "get_term_premium_benchmark", lambda *a, **k: fake)
     r = analyzer.term_premium_analysis("gsw", "2005-01-01", "2026-06-30", maturities=(2, 5, 10))
     assert r["benchmark"] is not None and list(r["benchmark"].columns) == [2.0, 5.0, 10.0]
     stats = r["benchmark_stats"]
@@ -244,10 +244,10 @@ def test_term_premium_benchmark_is_optional_and_reports_agreement(analyzer, monk
         assert abs(st["mean_gap_bps"] + 10) < 2  # ours - theirs = -10 bps by construction
         assert 0 < st["rmse_bps"] < 20 and st["latest_date"] == r["term_premium"].index[-1].strftime("%Y-%m-%d")
     # A benchmark that lacks the requested maturities is ignored gracefully.
-    monkeypatch.setattr(analyzer.data_manager, "get_acm_benchmark", lambda *a, **k: fake[[2.0]])
+    monkeypatch.setattr(analyzer.data_manager, "get_term_premium_benchmark", lambda *a, **k: fake[[2.0]])
     partial = analyzer.term_premium_analysis("gsw", "2005-01-01", "2026-06-30", maturities=(7,))
     assert partial["benchmark"] is None
-    monkeypatch.setattr(analyzer.data_manager, "get_acm_benchmark", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(analyzer.data_manager, "get_term_premium_benchmark", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert analyzer.term_premium_analysis("gsw", "2005-01-01", "2026-06-30", maturities=(2,))["benchmark"] is None
 
 
@@ -256,12 +256,12 @@ def test_term_premium_endpoint_exposes_benchmark(client, monkeypatch):
     assert j["benchmark"] is None and j["benchmark_stats"] == {} and "unavailable" in j["benchmark_note"]
     analyzer = client.application.config["ANALYZER"]
     fake = _fake_benchmark_from(analyzer)
-    monkeypatch.setattr(analyzer.data_manager, "get_acm_benchmark", lambda *a, **k: fake)
+    monkeypatch.setattr(analyzer.data_manager, "get_term_premium_benchmark", lambda *a, **k: fake)
     client.application.config["RESULT_CACHE"].invalidate_all()
     j = client.get("/api/term-premium?source=gsw&start=2005-01-01&maturities=2,10").get_json()
     assert set(j["benchmark"]) == {"dates", "2", "10"} and len(j["benchmark"]["dates"]) == len(j["benchmark"]["10"])
     assert set(j["benchmark_stats"]) == {"2", "10"} and j["benchmark_stats"]["10"]["correlation"] > 0.95
     assert "THREEFYTP" in j["benchmark_note"]
     ds = client.get("/api/data-sources").get_json()
-    assert any(c["id"] == "nyfed-acm" for c in ds["chain"])
+    assert any(c["id"] == "fed-kim-wright" for c in ds["chain"])
     client.application.config["RESULT_CACHE"].invalidate_all()
