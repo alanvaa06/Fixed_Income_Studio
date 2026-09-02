@@ -174,3 +174,6 @@ tmp/
 
 # Claude Code local settings (launch.json is shared)
 .claude/settings.local.json
+
+# README screenshots are tracked
+!docs/images/*.png
