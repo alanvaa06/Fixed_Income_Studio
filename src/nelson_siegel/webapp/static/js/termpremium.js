@@ -27,9 +27,18 @@
     tiles.push(S.metricTile("Model fit", S.fmtBps(s.fit_rmse * 1e4), `${s.n_factors} factors explain ${(s.explained_variance.reduce((a, b) => a + b, 0) * 100).toFixed(1)}% of yields`));
     tiles.push(S.metricTile("Factor persistence", fmt(s.max_eigenvalue, 3), s.max_eigenvalue < 1 ? "largest VAR eigenvalue · stationary" : "unit root: premia are level-dependent"));
     tiles.push(S.metricTile("Sample", `${s.n_obs} months`, `${s.start} → ${s.end}`));
+    const bs = j.benchmark_stats || {};
+    const focusKey = Object.keys(bs).includes(String(state.tpFocus)) ? String(state.tpFocus) : Object.keys(bs)[0];
+    if (focusKey) {
+      const b = bs[focusKey];
+      tiles.push(S.metricTile(`vs NY Fed ACM · ${S.tenorLabel(focusKey)}`, `ρ ${b.correlation.toFixed(2)}`,
+        `mean gap ${S.signed(b.mean_gap_bps, 0, " bps")} over ${b.n} months`, Math.abs(b.mean_gap_bps) > 50 ? "neg" : ""));
+    } else {
+      tiles.push(S.metricTile("vs NY Fed ACM", "n/a", j.benchmark ? "no overlapping months" : "needs a live FRED source"));
+    }
     const host = $("#tp-metrics");
     host.innerHTML = tiles.join("");
-    host.className = `grid grid-${Math.min(6, tiles.length)}`;
+    host.className = `grid grid-${tiles.length <= 6 ? tiles.length : 4}`;
   }
 
   function plotHistory(j) {
@@ -42,6 +51,10 @@
       if (j.dns && j.dns.term_premium[String(m)]) {
         traces.push({ x: j.dns.dates, y: j.dns.term_premium[String(m)].map((v) => v * 100), name: `${S.tenorLabel(m)} Diebold-Li`, mode: "lines",
           line: { color, width: 1.2, dash: "dot" }, hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} DL</extra>` });
+      }
+      if (j.benchmark && j.benchmark[String(m)]) {
+        traces.push({ x: j.benchmark.dates, y: j.benchmark[String(m)].map((v) => (v == null ? null : v * 100)), name: `${S.tenorLabel(m)} NY Fed ACM`, mode: "lines",
+          line: { color, width: 2.2, dash: "dashdot" }, opacity: 0.8, hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} NY Fed</extra>` });
       }
     });
     S.plot("chart-tp-history", traces, S.layoutWith("Date", "Term premium (bps)", { yaxis: { zeroline: true } }));
@@ -64,6 +77,25 @@
     ], S.layoutWith("Date", "Yield (%)"));
     const last = d.dates.length - 1;
     $("#tp-decomp-note").textContent = `${S.tenorLabel(focus)} on ${d.dates[last]}: yield ${S.fmtPct(d.observed[last])} = expected short rates ${S.fmtPct(d.expected_short_rate[last])} + term premium ${S.fmtPct(d.term_premium[last])} + convexity ${S.fmtPct(d.convexity[last], 3)} (model error ${S.fmtBps((d.observed[last] - d.fitted[last]) * 100, 1)}).`;
+  }
+
+  function renderBenchmark(j) {
+    const host = $("#tp-benchmark-wrap");
+    $("#tp-benchmark-note").textContent = j.benchmark_note || "";
+    const bs = j.benchmark_stats || {};
+    const keys = Object.keys(bs);
+    if (!keys.length) { host.hidden = true; return; }
+    host.hidden = false;
+    S.renderTable($("#tp-benchmark"), [
+      { key: "m", label: "Maturity", fmt: (v) => S.tenorLabel(v) },
+      { key: "latest_ours_pct", label: "Ours (latest)", fmt: (v) => S.signed(v * 100, 0, " bps"), align: "num" },
+      { key: "latest_benchmark_pct", label: "NY Fed (latest)", fmt: (v) => S.signed(v * 100, 0, " bps"), align: "num" },
+      { key: "correlation", label: "Correlation", fmt: (v) => v.toFixed(3), align: "num", cls: (v) => (v > 0.8 ? "best" : v < 0.5 ? "neg" : "") },
+      { key: "mean_gap_bps", label: "Mean gap", fmt: (v) => S.signed(v, 0, " bps"), align: "num", cls: (v) => S.heatClass(v, 60) },
+      { key: "rmse_bps", label: "RMSE of gap", fmt: (v) => S.fmtBps(v, 0), align: "num" },
+      { key: "n", label: "Months", align: "num" },
+      { key: "latest_date", label: "Last common" },
+    ], keys.map((k) => Object.assign({ m: Number(k) }, bs[k])));
   }
 
   function renderRegressions(j) {
@@ -101,6 +133,7 @@
       $("#tp-focus-chips").innerHTML = j.maturities.map((m) => `<button class="chip" data-tp-focus="${m}">${S.tenorLabel(m)}</button>`).join("");
       $$("#tp-focus-chips .chip").forEach((c) => c.addEventListener("click", () => { state.tpFocus = c.dataset.tpFocus; saveSettings(); plotDecomposition(j); }));
       plotDecomposition(j);
+      renderBenchmark(j);
       renderRegressions(j);
       const src = j.sources && (state.tpSource === "gsw" ? j.sources.gsw : j.sources[state.tpSource]);
       $("#tp-source-note").textContent = `${state.tpSource === "gsw" ? "Fed GSW zero curve" : state.tpSource === "tips" ? "TIPS factor history" : "Treasury factor history"}${src ? " · " + src : ""}`;
@@ -123,6 +156,16 @@
     const tp = j.term_premium;
     const header = ["date"].concat(j.maturities.map((m) => `tp_${S.tenorLabel(m)}_pct`));
     const rows = tp.dates.map((d, i) => [d].concat(j.maturities.map((m) => tp[String(m)][i])));
+    if (j.benchmark) {
+      const byDate = {};
+      j.benchmark.dates.forEach((d, i) => { byDate[d] = i; });
+      const bkeys = j.maturities.filter((m) => j.benchmark[String(m)]);
+      bkeys.forEach((m) => header.push(`nyfed_tp_${S.tenorLabel(m)}_pct`));
+      rows.forEach((row, i) => {
+        const bi = byDate[tp.dates[i]];
+        bkeys.forEach((m) => row.push(bi == null ? "" : j.benchmark[String(m)][bi]));
+      });
+    }
     S.downloadCSV(`term-premium-${j.source}-${tp.dates[0]}-${tp.dates[tp.dates.length - 1]}.csv`, header, rows);
   }
 

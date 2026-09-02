@@ -278,6 +278,7 @@ def create_app(
             {"id": "treasury.gov", "label": SOURCE_LABELS["treasury.gov"], "needs_key": False},
             {"id": "fred-public-csv", "label": SOURCE_LABELS["fred-public-csv"], "needs_key": False},
             {"id": "fed-gsw", "label": SOURCE_LABELS["fed-gsw"], "needs_key": False},
+            {"id": "nyfed-acm", "label": "NY Fed ACM term premia via FRED (THREEFYTP*)", "needs_key": False},
             {"id": SOURCE_SYNTHETIC, "label": SOURCE_LABELS[SOURCE_SYNTHETIC], "needs_key": False},
         ]
         return jsonify(info)
@@ -893,6 +894,14 @@ def create_app(
                 }
             tp = r["term_premium"]
             latest = {_mkey(m): float(tp[m].iloc[-1]) * 100.0 for m in tp.columns}
+            bench = r["benchmark"]
+            benchmark_block = None if bench is None else {"dates": _dates(bench.index), **_frame_pct(bench)}
+            benchmark_stats = {_mkey(m): v for m, v in r["benchmark_stats"].items()}
+            benchmark_note = (
+                "NY Fed ACM term premia (FRED THREEFYTP1-10) overlaid on the same maturities."
+                if bench is not None else
+                "NY Fed ACM benchmark unavailable: no live FRED source answered (there is no synthetic stand-in)."
+            )
             regressions = {
                 name: {_mkey(m): vals for m, vals in table.items()} for name, table in r["regressions"].items()
             }
@@ -905,6 +914,9 @@ def create_app(
                 "decomposition": decomposition,
                 "dns": dns_block,
                 "regressions": regressions,
+                "benchmark": benchmark_block,
+                "benchmark_stats": benchmark_stats,
+                "benchmark_note": benchmark_note,
                 **_source_info(),
             }
 

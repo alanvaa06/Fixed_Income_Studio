@@ -70,7 +70,7 @@ Charts load plotly.js from its CDN; `pip install plotly` makes the Studio serve 
 | **Historical Factors** | Factor histories with panel-estimated decays, per-date fit RMSE, Diebold-Li forecasts with 90% bands and a rolling-origin backtest of random walk vs AR(1) vs VAR(1). |
 | **Treasury vs TIPS** | Aligned nominal and real factor histories, breakeven inflation, factor correlations. |
 | **Short-Rate Models** | Estimate Vasicek/CIR on fed funds or a bill (OLS or MLE), calibrate the same model to today's curve, compare the physical and risk-neutral long-run means, simulate 300 paths with quantile bands, and read the term premium by tenor. |
-| **Term Premium** | ACM affine term premia on the Fed GSW zero curve (or this app's own factor history), the Diebold-Li expectations split for comparison, a stacked yield decomposition (expectations + term premium + convexity) and Campbell-Shiller / Fama-Bliss tests. |
+| **Term Premium** | ACM affine term premia on the Fed GSW zero curve (or this app's own factor history), overlaid on the New York Fed's published ACM series with correlation and mean-gap statistics, the Diebold-Li expectations split for comparison, a stacked yield decomposition (expectations + term premium + convexity) and Campbell-Shiller / Fama-Bliss tests. |
 | **Curve Analytics** | Curve moves over 1D/1W/1M/3M/1Y, today vs 1M/1Y ago, carry and roll-down, forward table, spread and butterfly history, rich/cheap ranking, PCA loadings, and a bond calculator (price, yield, duration, convexity, DV01, z-spread, key-rate durations, cash flows). |
 | **Learn** | Plain-language notes on every model, the term-premium decomposition, the analytics glossary and the data sources. |
 
@@ -102,7 +102,7 @@ All endpoints return JSON. Yields are in **percent**, maturities in **years**, s
 | `GET /api/backtest?...&horizons=&min_train=` | Out-of-sample RMSE by forecaster |
 | `GET /api/compare?start=&end=` | Treasury vs TIPS, breakevens |
 | `GET /api/short-rate?model=vasicek\|cir&method=ols\|mle&proxy=policy\|1m\|3m\|6m\|1y&start=&end=&horizon=&paths=` | Physical estimate, calibrated model, history, simulation quantiles, expected paths, term premium by tenor |
-| `GET /api/term-premium?source=gsw\|treasury\|tips&start=&end=&maturities=2,5,10&factors=3&max_maturity=10&dns_method=var` | ACM term premia and decomposition, Diebold-Li split, EH regressions |
+| `GET /api/term-premium?source=gsw\|treasury\|tips&start=&end=&maturities=2,5,10&factors=3&max_maturity=10&dns_method=var` | ACM term premia and decomposition, NY Fed ACM benchmark with agreement statistics, Diebold-Li split, EH regressions |
 | `GET /api/analytics?bond_type=&model=&horizon=&lookback=` | Curve changes, carry/roll-down, forwards, spreads (+history), rich/cheap, PCA |
 | `POST /api/bond` | `{maturity, coupon, frequency, price?, model?, bond_type?, points?}` → price, YTM, z-spread, duration, convexity, DV01, key-rate durations, cash flows |
 | `POST /api/fred-key` | Set the FRED key for the running process |
@@ -178,6 +178,7 @@ print(report["ytm"], report["modified_duration"], report["key_rate_durations"])
 | U.S. Treasury daily yield-curve XML | no | Nominal par curve and real (TIPS) curve |
 | FRED public `fredgraph.csv` | no | Any FRED series, same ids as above |
 | Fed Board GSW tables (`feds200628.csv`, `feds200805.csv`) | no | Fitted Svensson parameters and zero yields since 1961 (nominal) / 1999 (TIPS) |
+| NY Fed ACM term premia (FRED `THREEFYTP1`-`THREEFYTP10`) | no | Published Adrian-Crump-Moench premia, overlaid as a benchmark (no synthetic stand-in) |
 | Synthetic | no | Calendar-anchored AR(1) factor process; deterministic, overlapping windows agree |
 
 Each downloader tries FRED API → treasury.gov → FRED CSV → synthetic, memoises per window, cools a failed source down for ten minutes process-wide, and records `last_source`. `DataManager.source_summary()` and every API response expose the provenance.

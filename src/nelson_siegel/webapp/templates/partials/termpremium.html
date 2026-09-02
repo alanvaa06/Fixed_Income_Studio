@@ -3,7 +3,7 @@
   <header class="page-head">
     <div>
       <h2>Term Premium</h2>
-      <p class="muted">Split long yields into expected short rates and the premium for bearing duration risk. Adrian-Crump-Moench affine model on a monthly zero curve, cross-checked with a Diebold-Li expectations split and the classic regression tests.</p>
+      <p class="muted">Split long yields into expected short rates and the premium for bearing duration risk. Adrian-Crump-Moench affine model on a monthly zero curve, benchmarked against the New York Fed's published ACM series and cross-checked with a Diebold-Li expectations split and the classic regression tests.</p>
     </div>
     <div class="page-actions">
       <div class="segmented" role="group" aria-label="Zero-curve source">
@@ -54,7 +54,14 @@
           <button class="btn small ghost" id="btn-tp-export" disabled>Export CSV</button>
         </div>
       </div>
-      <div class="card-body"><div id="chart-tp-history" class="chart tall"></div></div>
+      <div class="card-body">
+        <div id="chart-tp-history" class="chart tall"></div>
+        <p class="muted note" id="tp-benchmark-note"></p>
+        <div id="tp-benchmark-wrap" hidden>
+          <h4 class="subhead">Agreement with the NY Fed ACM estimate</h4>
+          <div class="table-wrap"><table class="data-table compact" id="tp-benchmark"></table></div>
+        </div>
+      </div>
     </div>
 
     <div class="card">

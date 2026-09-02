@@ -45,7 +45,7 @@ This document describes how the package is organised and how the pieces fit toge
 Model-agnostic: any object with `predict(maturities)` returning continuously compounded zero yields is a curve. `Bond` + `price_from_curve`, `yield_to_maturity`, `duration_convexity`, `z_spread`, `key_rate_durations` (tent bumps), `bond_report`; `carry_roll_down`, `forward_rate_table`, `curve_spreads` (from a curve or as time series from a panel), `rich_cheap`, `pca_yield_changes`, `curve_changes`.
 
 ### `data.py`
-`BaseDataDownloader` runs a source chain per window and records `last_source`; failed public sources cool down process-wide for ten minutes. Pure parsers (`parse_treasury_xml`, `parse_fred_csv`, `parse_gsw_csv`) are unit-tested against fixtures. `FedGSWDownloader` caches the Fed table on disk and evaluates the published Svensson parameters on any maturity grid. `PolicyRateDownloader` provides the effective fed funds rate. `DataManager` fronts all of them and exposes `source_summary()`. Environment switches: `NELSON_SIEGEL_OFFLINE`, `NELSON_SIEGEL_PUBLIC_DATA`, `NELSON_SIEGEL_CACHE_DIR`.
+`BaseDataDownloader` runs a source chain per window and records `last_source`; failed public sources cool down process-wide for ten minutes. Pure parsers (`parse_treasury_xml`, `parse_fred_csv`, `parse_gsw_csv`) are unit-tested against fixtures. `FedGSWDownloader` caches the Fed table on disk and evaluates the published Svensson parameters on any maturity grid. `PolicyRateDownloader` provides the effective fed funds rate. `ACMBenchmarkDownloader` pulls the New York Fed ACM term premia (FRED `THREEFYTP1`-`THREEFYTP10`) through the same chain and deliberately has no synthetic fallback: offline it returns an empty frame and the UI says the benchmark is unavailable. `DataManager` fronts all of them and exposes `source_summary()`. Environment switches: `NELSON_SIEGEL_OFFLINE`, `NELSON_SIEGEL_PUBLIC_DATA`, `NELSON_SIEGEL_CACHE_DIR`.
 
 Synthetic data is generated from a calendar-anchored AR(1) Nelson-Siegel factor process (fixed business-day calendar 1985-2060, private RNG), so overlapping windows agree exactly and the histories look like real regimes rather than noise.
 
@@ -53,7 +53,7 @@ Synthetic data is generated from a calendar-anchored AR(1) Nelson-Siegel factor 
 `YieldCurveAnalyzer` composes the modules into workflows used by the API:
 - `analyze_historical_factors`, `forecast_factors`, `backtest_factor_forecasts`, `compare_curves` (as before);
 - `short_rate_proxy` / `short_rate_analysis` (estimate, calibrate with the estimated volatility, simulate, term premium by tenor);
-- `zero_curve_panel` / `term_premium_analysis` (ACM on GSW or on the app's own factor history, Diebold-Li split, regressions);
+- `zero_curve_panel` / `term_premium_analysis` (ACM on GSW or on the app's own factor history, NY Fed ACM benchmark with per-maturity correlation and mean gap, Diebold-Li split, regressions);
 - `curve_analytics` and `bond_analytics`.
 
 ### `registry.py`

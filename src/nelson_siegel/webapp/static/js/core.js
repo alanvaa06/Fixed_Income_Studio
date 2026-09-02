@@ -332,7 +332,7 @@ window.Studio = (function () {
   }
 
   // ---------------------------------------------------------------- Data status
-  const DATASET_LABELS = { treasury: "Treasury", tips: "TIPS", policy_rate: "Fed funds", gsw: "GSW zero curve" };
+  const DATASET_LABELS = { treasury: "Treasury", tips: "TIPS", policy_rate: "Fed funds", gsw: "GSW zero curve", acm_benchmark: "NY Fed ACM" };
   function updateDataStatus(info) {
     if (!info) return;
     document.body.dataset.fredKey = info.fred_api_key ? "true" : "false";
@@ -347,8 +347,9 @@ window.Studio = (function () {
     if (list) {
       list.innerHTML = Object.keys(DATASET_LABELS).map((k) => {
         const v = sources[k];
+        const label = k === "acm_benchmark" && v && /synthetic/i.test(v) ? "unavailable" : (v || "not loaded");
         const cls = !v ? "idle" : /synthetic/i.test(v) ? "synthetic" : "live";
-        return `<li class="${cls}"><span>${DATASET_LABELS[k]}</span><span class="src">${v || "not loaded"}</span></li>`;
+        return `<li class="${cls}"><span>${DATASET_LABELS[k]}</span><span class="src">${label}</span></li>`;
       }).join("");
     }
     const note = $("#fred-key-note");
