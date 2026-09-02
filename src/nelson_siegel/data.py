@@ -72,7 +72,7 @@ SOURCE_LABELS = {
 OFFLINE_ENV = "NELSON_SIEGEL_OFFLINE"
 PUBLIC_DATA_ENV = "NELSON_SIEGEL_PUBLIC_DATA"
 HTTP_TIMEOUT = 20.0
-USER_AGENT = "nelson-siegel-studio/2.0 (+https://github.com/alanvaa06/Nelson_Siegel_Model)"
+USER_AGENT = "fixed-income-studio/2.0 (+https://github.com/alanvaa06/Fixed_Income_Studio)"
 #: Seconds to skip a public source after a failed attempt.
 SOURCE_COOLDOWN = 600.0
 
