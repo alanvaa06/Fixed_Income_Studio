@@ -247,7 +247,8 @@ def test_models_endpoint_lists_registered_models():
     with app.test_client() as client:
         payload = client.get("/api/models").get_json()
     ids = [m["id"] for m in payload["models"]]
-    assert ids == ["nelson-siegel", "svensson"]
+    assert ids[:2] == ["nelson-siegel", "svensson"]  # parametric family first
+    assert set(ids) >= {"vasicek", "cir"}
     svensson = payload["models"][1]
     assert svensson["min_points"] == 6
     assert [f["label"] for f in svensson["factors"]] == [
