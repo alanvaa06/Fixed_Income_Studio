@@ -69,7 +69,7 @@ A single-page application served by Flask. Five tabs:
 |---|---|
 | **Curve Fitter** | Type in or paste market quotes (a paste box accepts `2Y 4.30`, `3M, 4.95%`, tab-separated, etc.), or click *Load latest snapshot*. Pick **Nelson-Siegel** or **Svensson**; the factor tiles adapt to the model. Shows the smooth fit, the implied forward curve, residuals in basis points, RMSE / R² badges, and exports the fitted table to CSV. |
 | **Parameter Lab** | Drag sliders for β₀, β₁, β₂, τ (plus β₃, τ₂ for Svensson). Everything is computed in the browser, so it redraws instantly and overlays each factor's contribution and optionally the forward curve. Presets jump to **Normal / Inverted / Humped / Flat**; *Use last fit* copies the fitted parameters in. |
-| **Historical Factors** | Quick-range chips (1Y-10Y) or custom dates; plots the factor series, the panel-estimated τ, and a per-date fit-RMSE chart that flags days the shape could not capture. CSV export. |
+| **Historical Factors** | Quick-range chips (1Y-10Y) or custom dates; plots the factor series, the panel-estimated τ, and a per-date fit-RMSE chart that flags days the shape could not capture. CSV export. A **Forecast** panel fits Diebold-Li factor dynamics (random walk / AR(1) / VAR(1)), shows factor paths with 90% bands, the implied curve at the horizon, factor half-lives, and a rolling-origin **backtest** of the three forecasters. |
 | **Treasury vs TIPS** | Aligns both curves on common dates, overlays the **breakeven inflation** spread (Treasury level − TIPS level), and reports level/slope/curvature correlations. CSV export. |
 | **Learn the Model** | Plain-language tour of the equation, factors, curve shapes, and reading signals. |
 
@@ -109,6 +109,8 @@ All endpoints are JSON. Yields are returned in **percent** (e.g. `4.25`), maturi
 | `GET  /api/snapshot?bond_type=treasury\|tips&model=...` | Latest available curve + fitted factors |
 | `GET  /api/historical?bond_type=...&start=YYYY-MM-DD&end=YYYY-MM-DD` | Factor history (daily up to one year, weekly beyond) with per-date fit RMSE |
 | `GET  /api/compare?start=...&end=...` | Treasury vs TIPS factor history + breakevens |
+| `GET  /api/forecast?bond_type=...&start=...&end=...&horizon=12&method=ar\|var\|rw` | Diebold-Li factor forecast with error bands, current vs forecast curve, persistence and half-lives |
+| `GET  /api/backtest?bond_type=...&start=...&end=...&horizons=1,4,12&min_train=52` | Expanding-window out-of-sample RMSE (factors and yields) for random walk, AR(1), VAR(1) |
 
 ### Example: fit a curve via curl
 
@@ -177,6 +179,15 @@ factors = analyzer.analyze_historical_factors(
     "treasury", start_date="2022-01-01", end_date="2024-12-31",
 )
 factors[["Level", "Slope", "Curvature"]].plot()
+
+# 4. Dynamic Nelson-Siegel (Diebold-Li): model the factors as AR(1)/VAR(1)
+#    and project the curve forward through the same loadings
+from nelson_siegel import DynamicNelsonSiegel, backtest
+dns = DynamicNelsonSiegel(method="ar").fit(factors)
+print(dns.summary()["half_life_steps"])          # shock half-lives per factor
+paths = dns.forecast_factors(horizon=12)          # point forecasts + *_std bands
+curves = dns.forecast_curve([1, 2, 5, 10, 30], horizon=12)
+table = backtest(factors, horizons=(1, 4, 12), maturities=[1, 5, 10])  # vs random walk
 ```
 
 Fitting notes:

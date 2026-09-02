@@ -331,3 +331,30 @@ def test_index_falls_back_to_cdn_without_plotly_package(monkeypatch):
         js = client.get("/static/vendor/plotly.min.js")
     assert app_module.PLOTLY_CDN_URL in html
     assert js.status_code == 404
+
+
+def test_forecast_endpoint_returns_paths_and_curves():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        r = client.get("/api/forecast?bond_type=treasury&start=2022-01-01&end=2025-12-31&horizon=8&method=ar")
+        bad_method = client.get("/api/forecast?bond_type=treasury&method=arima")
+        bad_h = client.get("/api/forecast?bond_type=treasury&horizon=0")
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json()
+    assert len(j["dates"]) == 8 and len(j["level"]) == 8 and len(j["level_std"]) == 8
+    assert len(j["forecast_curve"]) == len(j["maturities"]) == len(j["current_curve"])
+    assert len(j["smooth"]["forecast"]) == len(j["smooth"]["maturities"])
+    assert j["summary"]["method"] == "ar" and "persistence" in j["summary"]
+    assert bad_method.status_code == 400 and bad_h.status_code == 400
+
+
+def test_backtest_endpoint_reports_three_methods():
+    app = create_app(enable_warmup=False)
+    with app.test_client() as client:
+        r = client.get("/api/backtest?bond_type=treasury&start=2022-01-01&end=2025-12-31&horizons=1,4&min_train=60")
+        bad = client.get("/api/backtest?bond_type=treasury&horizons=x")
+    assert r.status_code == 200, r.get_json()
+    rows = r.get_json()["rows"]
+    assert sorted({row["method"] for row in rows}) == ["ar", "rw", "var"]
+    assert all(row["yield_rmse_bps"] >= 0 for row in rows) and len(rows) == 6
+    assert bad.status_code == 400

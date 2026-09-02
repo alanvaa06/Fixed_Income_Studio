@@ -669,7 +669,152 @@
       $("#h-obs").textContent = j.summary.n_observations.toLocaleString();
       $("#hist-range").textContent = `${j.summary.start} → ${j.summary.end}${j.is_synthetic ? " · synthetic data" : ""}`;
       $("#btn-hist-export").disabled = false;
+      $("#btn-fc-run").disabled = false;
+      $("#btn-bt-run").disabled = false;
+      $("#btn-fc-run").title = "";
+      $("#btn-bt-run").title = "";
       toast("Historical factors loaded.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  // ----- Forecast (Diebold-Li) -----
+  state.fcMethod = state.fcMethod || "ar";
+  state.fcHorizon = state.fcHorizon || "12";
+  activateSegmentedByData('.seg-btn[data-fc-method]', "fcMethod", state.fcMethod);
+  $$("#fc-chips .chip").forEach((c) => c.classList.toggle("active", c.dataset.fcHorizon === state.fcHorizon));
+  $$('.seg-btn[data-fc-method]').forEach((btn) => btn.addEventListener("click", () => {
+    setSegmented($$('.seg-btn[data-fc-method]'), btn);
+    state.fcMethod = btn.dataset.fcMethod;
+  }));
+  $$("#fc-chips .chip").forEach((chip) => chip.addEventListener("click", () => {
+    $$("#fc-chips .chip").forEach((c) => c.classList.toggle("active", c === chip));
+    state.fcHorizon = chip.dataset.fcHorizon;
+  }));
+
+  function histParams() {
+    return new URLSearchParams({
+      bond_type: state.histBondType,
+      start: $("#hist-start").value,
+      end: $("#hist-end").value,
+    });
+  }
+
+  function renderForecastMetrics(j) {
+    const host = $("#fc-metrics");
+    host.innerHTML = "";
+    const s = j.summary;
+    const stepLabel = s.step_days >= 6 ? "weeks" : "days";
+    const tile = (label, value, hint) => {
+      const el = document.createElement("div");
+      el.className = "metric";
+      el.innerHTML = `<span class="metric-label">${label}</span><span class="metric-value">${value}</span><span class="metric-hint">${hint || ""}</span>`;
+      host.appendChild(el);
+    };
+    const hl = s.half_life_steps || {};
+    const fmtHl = (v, rho) => {
+      if (v != null) return `${v.toFixed(1)} ${stepLabel}`;
+      return rho >= 1 ? "∞ (unit root)" : "n/a";
+    };
+    ["Level", "Slope", "Curvature"].forEach((name) => {
+      const rho = s.persistence[name];
+      tile(`${name} half-life`, fmtHl(hl[name], rho),
+        rho <= 0 ? `persistence ${fmt(rho, 3)} · no mean reversion to speak of` : `persistence ${fmt(rho, 3)}`);
+    });
+    const lastLevel = j.level[j.level.length - 1];
+    tile(`Level in ${j.horizon} ${stepLabel}`, fmt(lastLevel, 2, " %"),
+      s.unconditional_mean ? `long-run mean ${fmt(s.unconditional_mean.Level, 2, " %")}` : "non-stationary dynamics");
+  }
+
+  function plotForecast(j) {
+    const h = state.lastHist;
+    const band = (name, color) => {
+      const y = j[name], sd = j[name + "_std"];
+      const upper = y.map((v, i) => v + 1.645 * sd[i]);
+      const lower = y.map((v, i) => v - 1.645 * sd[i]);
+      return [
+        { x: j.dates.concat(j.dates.slice().reverse()), y: upper.concat(lower.slice().reverse()),
+          fill: "toself", fillcolor: color.replace(")", ", 0.12)").replace("rgb", "rgba"), line: { width: 0 },
+          hoverinfo: "skip", showlegend: false, name: name + " band" },
+        { x: j.dates, y, name: `${name} forecast`, mode: "lines", line: { color, width: 2, dash: "dash" },
+          hovertemplate: `%{x} · <b>%{y:.3f}%</b><extra>${name} forecast</extra>` },
+      ];
+    };
+    const hex2rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; };
+    const tail = h ? Math.max(0, h.dates.length - Math.max(60, j.horizon * 4)) : 0;
+    const traces = [];
+    if (h) {
+      traces.push({ x: h.dates.slice(tail), y: h.level.slice(tail), name: "Level", mode: "lines", line: { color: COLOR.treasury, width: 1.5 } });
+      traces.push({ x: h.dates.slice(tail), y: h.slope.slice(tail), name: "Slope", mode: "lines", line: { color: COLOR.tips, width: 1.5 } });
+      traces.push({ x: h.dates.slice(tail), y: h.curvature.slice(tail), name: "Curvature", mode: "lines", line: { color: COLOR.purple, width: 1.5 } });
+    }
+    traces.push(...band("level", hex2rgb(COLOR.treasury)), ...band("slope", hex2rgb(COLOR.tips)), ...band("curvature", hex2rgb(COLOR.purple)));
+    plot("chart-forecast-factors", traces, layoutWith("Date", "Factor (%)"));
+
+    plot("chart-forecast-curve", [
+      { x: j.smooth.maturities, y: j.smooth.current, name: `Current (${j.summary.last_date})`, mode: "lines", line: { color: COLOR.fitted, width: 2.5 } },
+      { x: j.smooth.maturities, y: j.smooth.forecast, name: `Forecast (+${j.horizon} steps)`, mode: "lines", line: { color: COLOR.obs, width: 2, dash: "dash" } },
+      { x: j.maturities, y: j.current_curve, name: "Current tenors", mode: "markers", marker: { color: COLOR.fitted, size: 7 }, showlegend: false },
+      { x: j.maturities, y: j.forecast_curve, name: "Forecast tenors", mode: "markers", marker: { color: COLOR.obs, size: 7 }, showlegend: false },
+    ], layoutWith("Maturity (years)", "Yield (%)"));
+  }
+
+  $("#btn-fc-run").addEventListener("click", async () => {
+    const btn = $("#btn-fc-run");
+    const params = histParams();
+    params.set("method", state.fcMethod);
+    params.set("horizon", state.fcHorizon);
+    setBusy(btn, true, "Forecasting…");
+    try {
+      const r = await fetch(`/api/forecast?${params.toString()}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Forecast failed.");
+      $("#fc-empty").hidden = true;
+      $("#fc-results").hidden = false;
+      renderForecastMetrics(j);
+      plotForecast(j);
+      window.dispatchEvent(new Event("resize"));
+      toast(`${j.method.toUpperCase()} forecast ready.`, "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  $("#btn-bt-run").addEventListener("click", async () => {
+    const btn = $("#btn-bt-run");
+    const params = histParams();
+    params.set("horizons", "1,4,12");
+    setBusy(btn, true, "Backtesting…");
+    try {
+      const r = await fetch(`/api/backtest?${params.toString()}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Backtest failed.");
+      const names = { rw: "Random walk", ar: "AR(1)", var: "VAR(1)" };
+      const byH = {};
+      j.rows.forEach((row) => { (byH[row.horizon] = byH[row.horizon] || {})[row.method] = row; });
+      const horizons = Object.keys(byH).map(Number).sort((a, b) => a - b);
+      let html = "<thead><tr><th>Horizon (steps)</th>";
+      ["rw", "ar", "var"].forEach((m) => { html += `<th>${names[m]}</th>`; });
+      html += "<th>Best</th></tr></thead><tbody>";
+      horizons.forEach((hz) => {
+        const cells = ["rw", "ar", "var"].map((m) => byH[hz][m] ? byH[hz][m].yield_rmse_bps : NaN);
+        const best = ["rw", "ar", "var"][cells.indexOf(Math.min(...cells))];
+        html += `<tr><td>${hz}</td>`;
+        ["rw", "ar", "var"].forEach((m, i) => {
+          html += `<td class="${m === best ? "best" : ""}">${fmt(cells[i], 1)}</td>`;
+        });
+        html += `<td>${names[best]}</td></tr>`;
+      });
+      html += "</tbody>";
+      $("#bt-table").innerHTML = html;
+      $("#bt-note").textContent = `· yield RMSE across tenors, ${j.rows[0].n_forecasts.toLocaleString()} forecast origins, first ${j.min_train} steps for training`;
+      $("#bt-results").hidden = false;
+      toast("Backtest ready.", "success");
     } catch (err) {
       toast(err.message, "error");
     } finally {

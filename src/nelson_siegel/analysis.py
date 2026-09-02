@@ -13,13 +13,14 @@ least-squares solve for (Level, Slope, Curvature) on every date.
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar
 
 from .data import DataManager
+from .dynamic import DynamicNelsonSiegel, backtest
 from .model import NelsonSiegelModel, TIPSNelsonSiegelModel, TreasuryNelsonSiegelModel
 
 _DEFAULT_TAU = {"treasury": 1.37, "tips": 2.0}
@@ -277,6 +278,83 @@ class YieldCurveAnalyzer:
                 print(f"Failed dates: {failed} ({100*failed/len(data):.1f}%)")
 
         return factors_df
+
+    def forecast_factors(
+        self,
+        bond_type: str,
+        horizon: int = 12,
+        method: str = "ar",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        maturities: Optional[Sequence[float]] = None,
+        factors: Optional[pd.DataFrame] = None,
+    ) -> Dict:
+        """
+        Diebold-Li dynamic forecast of the factors and the implied yield curves.
+
+        Parameters:
+        -----------
+        bond_type : str
+            'treasury' or 'tips'
+        horizon : int
+            Steps ahead (one step is one row of the factor history: daily for
+            ranges up to a year, weekly beyond).
+        method : {"ar", "var", "rw"}
+            AR(1) per factor (default), VAR(1), or random walk.
+        start_date, end_date : str, optional
+            Range of the factor history used to estimate the dynamics.
+        maturities : sequence of float, optional
+            Maturities for the forecast curves; defaults to the bond's quoted tenors.
+        factors : pd.DataFrame, optional
+            Pre-computed factor history (skips the download and cross-section fits).
+
+        Returns:
+        --------
+        dict
+            ``factors`` (history), ``forecast`` (factor paths with std bands),
+            ``curves`` (forecast yields by maturity), ``current_curve``,
+            ``maturities``, ``summary`` and the fitted ``model``.
+        """
+        bond_key = bond_type.lower()
+        if bond_key not in _BOND_MODELS:
+            raise ValueError("bond_type must be 'treasury' or 'tips'")
+        if factors is None:
+            factors = self.analyze_historical_factors(bond_key, start_date, end_date)
+        if maturities is None:
+            maturities = list(self._get_data(self.data_manager, bond_key, start_date, end_date).columns)
+        maturities = [float(m) for m in maturities]
+
+        dns = DynamicNelsonSiegel(method).fit(factors)
+        forecast = dns.forecast_factors(horizon)
+        curves = dns.forecast_curve(maturities, horizon)
+        return {
+            "bond_type": bond_key,
+            "factors": factors,
+            "forecast": forecast,
+            "curves": curves,
+            "current_curve": dns.current_curve(maturities),
+            "maturities": maturities,
+            "summary": dns.summary(),
+            "model": dns,
+        }
+
+    def backtest_factor_forecasts(
+        self,
+        bond_type: str,
+        horizons: Sequence[int] = (1, 4, 12),
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_train: int = 52,
+        factors: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """Out-of-sample RMSE of random walk vs AR(1) vs VAR(1) (see :func:`nelson_siegel.dynamic.backtest`)."""
+        bond_key = bond_type.lower()
+        if bond_key not in _BOND_MODELS:
+            raise ValueError("bond_type must be 'treasury' or 'tips'")
+        if factors is None:
+            factors = self.analyze_historical_factors(bond_key, start_date, end_date)
+        maturities = list(self._get_data(self.data_manager, bond_key, start_date, end_date).columns)
+        return backtest(factors, horizons=horizons, min_train=min_train, maturities=maturities)
 
     def analyze_single_curve(
         self,

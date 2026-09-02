@@ -11,12 +11,15 @@ GET  /api/historical         Compute historical Nelson-Siegel factors
 GET  /api/snapshot           Return the latest fitted curve for a bond type
 GET  /api/compare            Compare Treasury vs TIPS factor histories
 GET  /api/models             List available curve models and their factors
+GET  /api/forecast           Diebold-Li factor and curve forecast (AR/VAR/random walk)
+GET  /api/backtest           Out-of-sample RMSE of the three forecasters vs realised factors
 GET  /api/health             Health check
 """
 
 from __future__ import annotations
 
 import os
+import warnings
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +28,7 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file
 
 from ..analysis import YieldCurveAnalyzer
+from ..dynamic import METHODS, DynamicNelsonSiegel, backtest
 from ..model import NelsonSiegelModel, SvenssonModel, list_models, make_model
 from ._factors_cache import FactorsCache
 from .warmup import cancel_warmup, start_warmup
@@ -432,6 +436,129 @@ def create_app(
                     "tau": float(tau.iloc[0]),
                     "rmse_bps_mean": None if rmse_bps.isna().all() else float(rmse_bps.mean()),
                 },
+            }
+        )
+
+    @app.get("/api/forecast")
+    def forecast() -> Any:
+        """Diebold-Li dynamic forecast of the factor history and the implied curve."""
+        bond_type = request.args.get("bond_type", "treasury").lower()
+        start_date = request.args.get("start")
+        end_date = request.args.get("end")
+        method = (request.args.get("method") or "ar").lower()
+        if bond_type not in {"treasury", "tips"}:
+            return jsonify({"error": "bond_type must be 'treasury' or 'tips'."}), 400
+        if method not in METHODS:
+            return jsonify({"error": f"method must be one of {', '.join(METHODS)}."}), 400
+        try:
+            horizon = int(request.args.get("horizon", 12))
+        except ValueError:
+            return jsonify({"error": "horizon must be an integer."}), 400
+        if not 1 <= horizon <= 520:
+            return jsonify({"error": "horizon must be between 1 and 520 steps."}), 400
+
+        try:
+            factors = _get_cached_factors(bond_type, start_date, end_date)
+            analyzer = app.config["ANALYZER"]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                result = analyzer.forecast_factors(
+                    bond_type, horizon=horizon, method=method, start_date=start_date,
+                    end_date=end_date, factors=factors,
+                )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 422
+
+        fc = result["forecast"]
+        dns: DynamicNelsonSiegel = result["model"]
+        maturities = result["maturities"]
+        smooth_x = _smooth_grid(min(maturities), max(maturities))
+        current_smooth = dns.current_curve(smooth_x)
+        horizon_smooth = dns.factors_to_yields(fc[dns.factor_names_].to_numpy()[-1], smooth_x)[0]
+
+        def series(name: str) -> List[float]:
+            return [float(v) * 100.0 for v in fc[name]]
+
+        summary = result["summary"]
+        return jsonify(
+            {
+                "bond_type": bond_type,
+                "method": method,
+                "horizon": horizon,
+                "dates": [d.strftime("%Y-%m-%d") for d in fc.index],
+                "level": series("Level"),
+                "slope": series("Slope"),
+                "curvature": series("Curvature"),
+                "level_std": series("Level_std"),
+                "slope_std": series("Slope_std"),
+                "curvature_std": series("Curvature_std"),
+                "maturities": maturities,
+                "current_curve": _to_pct(result["current_curve"]),
+                "forecast_curve": _to_pct(result["curves"].iloc[-1].to_numpy()),
+                "smooth": {
+                    "maturities": smooth_x.tolist(),
+                    "current": _to_pct(current_smooth),
+                    "forecast": _to_pct(horizon_smooth),
+                },
+                "summary": {
+                    **summary,
+                    "unconditional_mean": (
+                        {k: v * 100.0 for k, v in summary["unconditional_mean"].items()}
+                        if summary["unconditional_mean"] else None
+                    ),
+                    "residual_std_bps": {k: v * 10000.0 for k, v in summary["residual_std"].items()},
+                    "history_start": factors.index[0].strftime("%Y-%m-%d"),
+                },
+                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
+            }
+        )
+
+    @app.get("/api/backtest")
+    def backtest_endpoint() -> Any:
+        """Rolling-origin RMSE of random walk vs AR(1) vs VAR(1) factor forecasts."""
+        bond_type = request.args.get("bond_type", "treasury").lower()
+        start_date = request.args.get("start")
+        end_date = request.args.get("end")
+        if bond_type not in {"treasury", "tips"}:
+            return jsonify({"error": "bond_type must be 'treasury' or 'tips'."}), 400
+        try:
+            horizons = tuple(int(h) for h in (request.args.get("horizons") or "1,4,12").split(","))
+            min_train = int(request.args.get("min_train", 52))
+        except ValueError:
+            return jsonify({"error": "horizons must be comma-separated integers."}), 400
+        if any(h < 1 for h in horizons) or len(horizons) > 6:
+            return jsonify({"error": "Provide 1-6 positive horizons."}), 400
+
+        try:
+            factors = _get_cached_factors(bond_type, start_date, end_date)
+            maturities = [float(m) for m in app.config["DATA_MANAGER"].get_treasury_data(start_date, end_date).columns] \
+                if bond_type == "treasury" else \
+                [float(m) for m in app.config["DATA_MANAGER"].get_tips_data(start_date, end_date).columns]
+            table = backtest(factors, horizons=horizons, min_train=min_train, maturities=maturities)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 422
+
+        rows = []
+        for (method, horizon), row in table.iterrows():
+            rows.append(
+                {
+                    "method": method,
+                    "horizon": int(horizon),
+                    "n_forecasts": int(row["n_forecasts"]),
+                    "level_rmse_bps": float(row["Level_rmse"]) * 10000.0,
+                    "slope_rmse_bps": float(row["Slope_rmse"]) * 10000.0,
+                    "curvature_rmse_bps": float(row["Curvature_rmse"]) * 10000.0,
+                    "yield_rmse_bps": float(row["yield_rmse"]) * 10000.0,
+                }
+            )
+        return jsonify(
+            {
+                "bond_type": bond_type,
+                "horizons": list(horizons),
+                "min_train": min_train,
+                "rows": rows,
+                "n_observations": int(len(factors)),
+                "is_synthetic": not app.config["FRED_KEY_PRESENT"],
             }
         )
 

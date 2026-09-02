@@ -274,6 +274,48 @@
           </div>
         </div>
 
+        <div class="card" id="forecast-card">
+          <div class="card-head">
+            <h3>Forecast (Diebold-Li dynamics)</h3>
+            <div class="card-tools">
+              <div class="segmented" role="group" aria-label="Forecast method" id="fc-method-switch">
+                <button class="seg-btn" data-fc-method="rw" aria-pressed="false" title="No change from the last observation">Random walk</button>
+                <button class="seg-btn active" data-fc-method="ar" aria-pressed="true" title="AR(1) per factor (Diebold-Li)">AR(1)</button>
+                <button class="seg-btn" data-fc-method="var" aria-pressed="false" title="VAR(1) on all factors">VAR(1)</button>
+              </div>
+              <div class="chips" role="group" aria-label="Horizon" id="fc-chips">
+                <button class="chip" data-fc-horizon="4">4</button>
+                <button class="chip active" data-fc-horizon="12">12</button>
+                <button class="chip" data-fc-horizon="26">26</button>
+                <button class="chip" data-fc-horizon="52">52</button>
+              </div>
+              <span class="muted">steps</span>
+              <button class="btn small primary" id="btn-fc-run" disabled title="Run the historical factors first">Forecast</button>
+              <button class="btn small ghost" id="btn-bt-run" disabled title="Rolling-origin RMSE vs random walk">Backtest</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <p class="muted" id="fc-empty">Run the historical factors above, then forecast: the factors are modelled as AR(1) / VAR(1) processes and mapped back to a curve through the same loadings. One step is one observation of the history (daily up to a year, weekly beyond).</p>
+            <div id="fc-results" hidden>
+              <div class="grid grid-4" id="fc-metrics"></div>
+              <div class="grid grid-2">
+                <div>
+                  <h4 class="subhead">Factor paths with 90% bands</h4>
+                  <div id="chart-forecast-factors" class="chart"></div>
+                </div>
+                <div>
+                  <h4 class="subhead">Current vs forecast curve</h4>
+                  <div id="chart-forecast-curve" class="chart"></div>
+                </div>
+              </div>
+            </div>
+            <div id="bt-results" hidden>
+              <h4 class="subhead">Out-of-sample RMSE (bps), expanding window <span class="muted" id="bt-note"></span></h4>
+              <div class="table-wrap"><table class="data-table" id="bt-table"></table></div>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-head">
             <h3>Fit quality per date</h3>

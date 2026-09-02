@@ -516,3 +516,14 @@ kbd {
   border-radius: 10px;
 }
 .chart-offline code { background: var(--bg-2); padding: 1px 5px; border-radius: 4px; }
+
+/* Forecast card */
+.subhead { margin: 6px 0 8px; font-size: 12.5px; letter-spacing: 0.3px; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+#fc-metrics { margin-bottom: 18px; }
+#bt-results { margin-top: 18px; }
+.table-wrap { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 500; }
+.data-table td.best { color: #9ae6c4; font-weight: 600; }

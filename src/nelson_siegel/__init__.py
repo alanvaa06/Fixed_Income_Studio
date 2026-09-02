@@ -23,6 +23,7 @@ from .model import (
 )
 from .data import TreasuryDataDownloader, TIPSDataDownloader, DataManager
 from .analysis import YieldCurveAnalyzer
+from .dynamic import DynamicNelsonSiegel, backtest
 from .plotting import YieldCurvePlotter
 
 # Optional interactive components (requires ipywidgets)
@@ -59,6 +60,8 @@ __all__ = [
     "TIPSDataDownloader",
     "DataManager",
     "YieldCurveAnalyzer",
+    "DynamicNelsonSiegel",
+    "backtest",
     "YieldCurvePlotter",
 ]
 
