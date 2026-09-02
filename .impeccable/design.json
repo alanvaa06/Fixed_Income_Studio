@@ -1,0 +1,923 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T12:00:00Z",
+  "title": "Design System: Fixed Income Studio",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(100.0% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(25% 0.000 0)",
+          "oklch(35% 0.000 0)",
+          "oklch(45% 0.000 0)",
+          "oklch(55% 0.000 0)",
+          "oklch(65% 0.000 0)",
+          "oklch(80% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ],
+        "darkValue": "#16191d"
+      },
+      "paper-recessed": {
+        "role": "neutral",
+        "displayName": "Paper Recessed",
+        "canonical": "oklch(97.0% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(25% 0.000 0)",
+          "oklch(35% 0.000 0)",
+          "oklch(45% 0.000 0)",
+          "oklch(55% 0.000 0)",
+          "oklch(65% 0.000 0)",
+          "oklch(80% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ],
+        "darkValue": "#1e2227"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(89.6% 0.009 258)",
+        "tonalRamp": [
+          "oklch(15% 0.006 258)",
+          "oklch(25% 0.007 258)",
+          "oklch(35% 0.008 258)",
+          "oklch(45% 0.009 258)",
+          "oklch(55% 0.009 258)",
+          "oklch(65% 0.008 258)",
+          "oklch(80% 0.007 258)",
+          "oklch(95% 0.006 258)"
+        ],
+        "darkValue": "#2c3138"
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "oklch(80.5% 0.015 255)",
+        "tonalRamp": [
+          "oklch(15% 0.010 255)",
+          "oklch(25% 0.012 255)",
+          "oklch(35% 0.013 255)",
+          "oklch(45% 0.014 255)",
+          "oklch(55% 0.014 255)",
+          "oklch(65% 0.013 255)",
+          "oklch(80% 0.011 255)",
+          "oklch(95% 0.009 255)"
+        ],
+        "darkValue": "#3d434c"
+      },
+      "chart-grid": {
+        "role": "neutral",
+        "displayName": "Chart Grid",
+        "canonical": "oklch(92.7% 0.006 255)",
+        "tonalRamp": [
+          "oklch(15% 0.004 255)",
+          "oklch(25% 0.005 255)",
+          "oklch(35% 0.005 255)",
+          "oklch(45% 0.006 255)",
+          "oklch(55% 0.006 255)",
+          "oklch(65% 0.005 255)",
+          "oklch(80% 0.005 255)",
+          "oklch(95% 0.004 255)"
+        ],
+        "darkValue": "#2c3138"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(17.8% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(25% 0.000 0)",
+          "oklch(35% 0.000 0)",
+          "oklch(45% 0.000 0)",
+          "oklch(55% 0.000 0)",
+          "oklch(65% 0.000 0)",
+          "oklch(80% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ],
+        "darkValue": "#e8eaed"
+      },
+      "ink-dim": {
+        "role": "neutral",
+        "displayName": "Ink Dim",
+        "canonical": "oklch(39.5% 0.023 258)",
+        "tonalRamp": [
+          "oklch(15% 0.016 258)",
+          "oklch(25% 0.018 258)",
+          "oklch(35% 0.020 258)",
+          "oklch(45% 0.022 258)",
+          "oklch(55% 0.022 258)",
+          "oklch(65% 0.020 258)",
+          "oklch(80% 0.017 258)",
+          "oklch(95% 0.014 258)"
+        ],
+        "darkValue": "#b3b9c2"
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Ink Muted",
+        "canonical": "oklch(50.0% 0.022 256)",
+        "tonalRamp": [
+          "oklch(15% 0.015 256)",
+          "oklch(25% 0.017 256)",
+          "oklch(35% 0.019 256)",
+          "oklch(45% 0.021 256)",
+          "oklch(55% 0.021 256)",
+          "oklch(65% 0.019 256)",
+          "oklch(80% 0.016 256)",
+          "oklch(95% 0.013 256)"
+        ],
+        "darkValue": "#8a929d"
+      },
+      "slate": {
+        "role": "primary",
+        "displayName": "Slate",
+        "canonical": "oklch(41.4% 0.088 249)",
+        "tonalRamp": [
+          "oklch(15% 0.061 249)",
+          "oklch(25% 0.068 249)",
+          "oklch(35% 0.076 249)",
+          "oklch(45% 0.084 249)",
+          "oklch(55% 0.084 249)",
+          "oklch(65% 0.076 249)",
+          "oklch(80% 0.064 249)",
+          "oklch(95% 0.053 249)"
+        ],
+        "darkValue": "#6da4d8"
+      },
+      "slate-deep": {
+        "role": "primary",
+        "displayName": "Slate Deep",
+        "canonical": "oklch(33.7% 0.071 250)",
+        "tonalRamp": [
+          "oklch(15% 0.048 250)",
+          "oklch(25% 0.055 250)",
+          "oklch(35% 0.061 250)",
+          "oklch(45% 0.067 250)",
+          "oklch(55% 0.067 250)",
+          "oklch(65% 0.061 250)",
+          "oklch(80% 0.051 250)",
+          "oklch(95% 0.042 250)"
+        ],
+        "darkValue": "#86b6e2"
+      },
+      "on-slate": {
+        "role": "primary",
+        "displayName": "On Slate",
+        "canonical": "oklch(100.0% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(25% 0.000 0)",
+          "oklch(35% 0.000 0)",
+          "oklch(45% 0.000 0)",
+          "oklch(55% 0.000 0)",
+          "oklch(65% 0.000 0)",
+          "oklch(80% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ],
+        "darkValue": "#0b0e12"
+      },
+      "slate-wash": {
+        "role": "primary",
+        "displayName": "Slate Wash",
+        "canonical": "oklch(41.4% 0.088 249)",
+        "tonalRamp": [
+          "oklch(15% 0.061 249)",
+          "oklch(25% 0.068 249)",
+          "oklch(35% 0.076 249)",
+          "oklch(45% 0.084 249)",
+          "oklch(55% 0.084 249)",
+          "oklch(65% 0.076 249)",
+          "oklch(80% 0.064 249)",
+          "oklch(95% 0.053 249)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue.",
+        "darkValue": "rgba(109, 164, 216, 0.16)"
+      },
+      "live-green": {
+        "role": "semantic",
+        "displayName": "Live Green",
+        "canonical": "oklch(52.3% 0.135 144)",
+        "tonalRamp": [
+          "oklch(15% 0.092 144)",
+          "oklch(25% 0.104 144)",
+          "oklch(35% 0.116 144)",
+          "oklch(45% 0.129 144)",
+          "oklch(55% 0.129 144)",
+          "oklch(65% 0.116 144)",
+          "oklch(80% 0.098 144)",
+          "oklch(95% 0.080 144)"
+        ],
+        "darkValue": "#6cbf7a"
+      },
+      "warn-ochre": {
+        "role": "semantic",
+        "displayName": "Warn Ochre",
+        "canonical": "oklch(50.8% 0.108 73)",
+        "tonalRamp": [
+          "oklch(15% 0.074 73)",
+          "oklch(25% 0.084 73)",
+          "oklch(35% 0.093 73)",
+          "oklch(45% 0.103 73)",
+          "oklch(55% 0.103 73)",
+          "oklch(65% 0.093 73)",
+          "oklch(80% 0.079 73)",
+          "oklch(95% 0.064 73)"
+        ],
+        "darkValue": "#d9a441"
+      },
+      "danger-brick": {
+        "role": "semantic",
+        "displayName": "Danger Brick",
+        "canonical": "oklch(50.0% 0.182 30)",
+        "tonalRamp": [
+          "oklch(15% 0.125 30)",
+          "oklch(25% 0.141 30)",
+          "oklch(35% 0.157 30)",
+          "oklch(45% 0.174 30)",
+          "oklch(55% 0.174 30)",
+          "oklch(65% 0.157 30)",
+          "oklch(80% 0.133 30)",
+          "oklch(95% 0.108 30)"
+        ],
+        "darkValue": "#e4675a"
+      },
+      "down-red": {
+        "role": "semantic",
+        "displayName": "Down Red",
+        "canonical": "oklch(54.3% 0.174 30)",
+        "tonalRamp": [
+          "oklch(15% 0.119 30)",
+          "oklch(25% 0.135 30)",
+          "oklch(35% 0.151 30)",
+          "oklch(45% 0.166 30)",
+          "oklch(55% 0.166 30)",
+          "oklch(65% 0.151 30)",
+          "oklch(80% 0.127 30)",
+          "oklch(95% 0.104 30)"
+        ],
+        "darkValue": "#e4675a"
+      },
+      "up-wash": {
+        "role": "semantic",
+        "displayName": "Up Wash",
+        "canonical": "oklch(52.3% 0.135 144)",
+        "tonalRamp": [
+          "oklch(15% 0.092 144)",
+          "oklch(25% 0.104 144)",
+          "oklch(35% 0.116 144)",
+          "oklch(45% 0.129 144)",
+          "oklch(55% 0.129 144)",
+          "oklch(65% 0.116 144)",
+          "oklch(80% 0.098 144)",
+          "oklch(95% 0.080 144)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue.",
+        "darkValue": "rgba(108, 191, 122, 0.14)"
+      },
+      "down-wash": {
+        "role": "semantic",
+        "displayName": "Down Wash",
+        "canonical": "oklch(54.3% 0.174 30)",
+        "tonalRamp": [
+          "oklch(15% 0.119 30)",
+          "oklch(25% 0.135 30)",
+          "oklch(35% 0.151 30)",
+          "oklch(45% 0.166 30)",
+          "oklch(55% 0.166 30)",
+          "oklch(65% 0.151 30)",
+          "oklch(80% 0.127 30)",
+          "oklch(95% 0.104 30)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue.",
+        "darkValue": "rgba(228, 103, 90, 0.14)"
+      },
+      "warn-wash": {
+        "role": "semantic",
+        "displayName": "Warn Wash",
+        "canonical": "oklch(50.8% 0.108 73)",
+        "tonalRamp": [
+          "oklch(15% 0.074 73)",
+          "oklch(25% 0.084 73)",
+          "oklch(35% 0.093 73)",
+          "oklch(45% 0.103 73)",
+          "oklch(55% 0.103 73)",
+          "oklch(65% 0.093 73)",
+          "oklch(80% 0.079 73)",
+          "oklch(95% 0.064 73)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue.",
+        "darkValue": "rgba(217, 164, 65, 0.12)"
+      },
+      "danger-wash": {
+        "role": "semantic",
+        "displayName": "Danger Wash",
+        "canonical": "oklch(50.0% 0.182 30)",
+        "tonalRamp": [
+          "oklch(15% 0.125 30)",
+          "oklch(25% 0.141 30)",
+          "oklch(35% 0.157 30)",
+          "oklch(45% 0.174 30)",
+          "oklch(55% 0.174 30)",
+          "oklch(65% 0.157 30)",
+          "oklch(80% 0.133 30)",
+          "oklch(95% 0.108 30)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue.",
+        "darkValue": "rgba(228, 103, 90, 0.12)"
+      },
+      "charcoal": {
+        "role": "neutral",
+        "displayName": "Charcoal",
+        "canonical": "oklch(19.0% 0.007 258)",
+        "tonalRamp": [
+          "oklch(15% 0.005 258)",
+          "oklch(25% 0.005 258)",
+          "oklch(35% 0.006 258)",
+          "oklch(45% 0.007 258)",
+          "oklch(55% 0.007 258)",
+          "oklch(65% 0.006 258)",
+          "oklch(80% 0.005 258)",
+          "oklch(95% 0.004 258)"
+        ]
+      },
+      "charcoal-raised": {
+        "role": "neutral",
+        "displayName": "Charcoal Raised",
+        "canonical": "oklch(21.2% 0.009 256)",
+        "tonalRamp": [
+          "oklch(15% 0.006 256)",
+          "oklch(25% 0.007 256)",
+          "oklch(35% 0.008 256)",
+          "oklch(45% 0.009 256)",
+          "oklch(55% 0.009 256)",
+          "oklch(65% 0.008 256)",
+          "oklch(80% 0.007 256)",
+          "oklch(95% 0.005 256)"
+        ]
+      },
+      "charcoal-recessed": {
+        "role": "neutral",
+        "displayName": "Charcoal Recessed",
+        "canonical": "oklch(25.0% 0.011 254)",
+        "tonalRamp": [
+          "oklch(15% 0.008 254)",
+          "oklch(25% 0.009 254)",
+          "oklch(35% 0.010 254)",
+          "oklch(45% 0.011 254)",
+          "oklch(55% 0.011 254)",
+          "oklch(65% 0.010 254)",
+          "oklch(80% 0.008 254)",
+          "oklch(95% 0.007 254)"
+        ]
+      },
+      "hairline-dark": {
+        "role": "neutral",
+        "displayName": "Hairline Dark",
+        "canonical": "oklch(31.1% 0.014 257)",
+        "tonalRamp": [
+          "oklch(15% 0.010 257)",
+          "oklch(25% 0.011 257)",
+          "oklch(35% 0.012 257)",
+          "oklch(45% 0.014 257)",
+          "oklch(55% 0.014 257)",
+          "oklch(65% 0.012 257)",
+          "oklch(80% 0.011 257)",
+          "oklch(95% 0.009 257)"
+        ]
+      },
+      "hairline-strong-dark": {
+        "role": "neutral",
+        "displayName": "Hairline Strong Dark",
+        "canonical": "oklch(38.1% 0.017 258)",
+        "tonalRamp": [
+          "oklch(15% 0.012 258)",
+          "oklch(25% 0.013 258)",
+          "oklch(35% 0.015 258)",
+          "oklch(45% 0.017 258)",
+          "oklch(55% 0.017 258)",
+          "oklch(65% 0.015 258)",
+          "oklch(80% 0.013 258)",
+          "oklch(95% 0.010 258)"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink Dark",
+        "canonical": "oklch(93.6% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(25% 0.000 0)",
+          "oklch(35% 0.000 0)",
+          "oklch(45% 0.000 0)",
+          "oklch(55% 0.000 0)",
+          "oklch(65% 0.000 0)",
+          "oklch(80% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ]
+      },
+      "ink-dim-dark": {
+        "role": "neutral",
+        "displayName": "Ink Dim Dark",
+        "canonical": "oklch(78.4% 0.014 258)",
+        "tonalRamp": [
+          "oklch(15% 0.010 258)",
+          "oklch(25% 0.011 258)",
+          "oklch(35% 0.012 258)",
+          "oklch(45% 0.014 258)",
+          "oklch(55% 0.014 258)",
+          "oklch(65% 0.012 258)",
+          "oklch(80% 0.011 258)",
+          "oklch(95% 0.009 258)"
+        ]
+      },
+      "ink-muted-dark": {
+        "role": "neutral",
+        "displayName": "Ink Muted Dark",
+        "canonical": "oklch(65.7% 0.019 256)",
+        "tonalRamp": [
+          "oklch(15% 0.013 256)",
+          "oklch(25% 0.015 256)",
+          "oklch(35% 0.016 256)",
+          "oklch(45% 0.018 256)",
+          "oklch(55% 0.018 256)",
+          "oklch(65% 0.016 256)",
+          "oklch(80% 0.014 256)",
+          "oklch(95% 0.011 256)"
+        ]
+      },
+      "slate-lifted": {
+        "role": "primary",
+        "displayName": "Slate Lifted",
+        "canonical": "oklch(70.1% 0.096 248)",
+        "tonalRamp": [
+          "oklch(15% 0.066 248)",
+          "oklch(25% 0.075 248)",
+          "oklch(35% 0.083 248)",
+          "oklch(45% 0.092 248)",
+          "oklch(55% 0.092 248)",
+          "oklch(65% 0.083 248)",
+          "oklch(80% 0.070 248)",
+          "oklch(95% 0.057 248)"
+        ]
+      },
+      "slate-lifted-hover": {
+        "role": "primary",
+        "displayName": "Slate Lifted Hover",
+        "canonical": "oklch(75.8% 0.082 247)",
+        "tonalRamp": [
+          "oklch(15% 0.056 247)",
+          "oklch(25% 0.063 247)",
+          "oklch(35% 0.071 247)",
+          "oklch(45% 0.078 247)",
+          "oklch(55% 0.078 247)",
+          "oklch(65% 0.071 247)",
+          "oklch(80% 0.060 247)",
+          "oklch(95% 0.049 247)"
+        ]
+      },
+      "on-slate-dark": {
+        "role": "primary",
+        "displayName": "On Slate Dark",
+        "canonical": "oklch(16.2% 0.010 256)",
+        "tonalRamp": [
+          "oklch(15% 0.007 256)",
+          "oklch(25% 0.008 256)",
+          "oklch(35% 0.008 256)",
+          "oklch(45% 0.009 256)",
+          "oklch(55% 0.009 256)",
+          "oklch(65% 0.008 256)",
+          "oklch(80% 0.007 256)",
+          "oklch(95% 0.006 256)"
+        ]
+      },
+      "slate-wash-dark": {
+        "role": "primary",
+        "displayName": "Slate Wash Dark",
+        "canonical": "oklch(70.1% 0.096 248)",
+        "tonalRamp": [
+          "oklch(15% 0.066 248)",
+          "oklch(25% 0.075 248)",
+          "oklch(35% 0.083 248)",
+          "oklch(45% 0.092 248)",
+          "oklch(55% 0.092 248)",
+          "oklch(65% 0.083 248)",
+          "oklch(80% 0.070 248)",
+          "oklch(95% 0.057 248)"
+        ],
+        "note": "Alpha wash over paper; ramp shown for the underlying hue."
+      },
+      "chart-treasury": {
+        "role": "chart",
+        "displayName": "Treasury Slate",
+        "canonical": "oklch(52.5% 0.112 249)",
+        "tonalRamp": [
+          "oklch(15% 0.077 249)",
+          "oklch(25% 0.087 249)",
+          "oklch(35% 0.097 249)",
+          "oklch(45% 0.107 249)",
+          "oklch(55% 0.107 249)",
+          "oklch(65% 0.097 249)",
+          "oklch(80% 0.082 249)",
+          "oklch(95% 0.067 249)"
+        ],
+        "darkValue": "#5b93c9"
+      },
+      "chart-tips": {
+        "role": "chart",
+        "displayName": "TIPS Green",
+        "canonical": "oklch(58.1% 0.132 147)",
+        "tonalRamp": [
+          "oklch(15% 0.090 147)",
+          "oklch(25% 0.102 147)",
+          "oklch(35% 0.114 147)",
+          "oklch(45% 0.126 147)",
+          "oklch(55% 0.126 147)",
+          "oklch(65% 0.114 147)",
+          "oklch(80% 0.096 147)",
+          "oklch(95% 0.078 147)"
+        ],
+        "darkValue": "#5fae6e"
+      },
+      "chart-fitted": {
+        "role": "chart",
+        "displayName": "Fitted Orange",
+        "canonical": "oklch(67.2% 0.151 58)",
+        "tonalRamp": [
+          "oklch(15% 0.104 58)",
+          "oklch(25% 0.117 58)",
+          "oklch(35% 0.131 58)",
+          "oklch(45% 0.144 58)",
+          "oklch(55% 0.144 58)",
+          "oklch(65% 0.131 58)",
+          "oklch(80% 0.110 58)",
+          "oklch(95% 0.090 58)"
+        ],
+        "darkValue": "#e8964a"
+      },
+      "chart-purple": {
+        "role": "chart",
+        "displayName": "Purple",
+        "canonical": "oklch(53.7% 0.120 304)",
+        "tonalRamp": [
+          "oklch(15% 0.082 304)",
+          "oklch(25% 0.093 304)",
+          "oklch(35% 0.104 304)",
+          "oklch(45% 0.115 304)",
+          "oklch(55% 0.115 304)",
+          "oklch(65% 0.104 304)",
+          "oklch(80% 0.088 304)",
+          "oklch(95% 0.072 304)"
+        ],
+        "darkValue": "#a07fc9"
+      },
+      "chart-pink": {
+        "role": "chart",
+        "displayName": "Pink",
+        "canonical": "oklch(51.5% 0.169 348)",
+        "tonalRamp": [
+          "oklch(15% 0.116 348)",
+          "oklch(25% 0.131 348)",
+          "oklch(35% 0.147 348)",
+          "oklch(45% 0.162 348)",
+          "oklch(55% 0.162 348)",
+          "oklch(65% 0.147 348)",
+          "oklch(80% 0.124 348)",
+          "oklch(95% 0.101 348)"
+        ],
+        "darkValue": "#c85aa0"
+      },
+      "chart-red": {
+        "role": "chart",
+        "displayName": "Brick Red",
+        "canonical": "oklch(57.4% 0.167 29)",
+        "tonalRamp": [
+          "oklch(15% 0.114 29)",
+          "oklch(25% 0.129 29)",
+          "oklch(35% 0.144 29)",
+          "oklch(45% 0.159 29)",
+          "oklch(55% 0.159 29)",
+          "oklch(65% 0.144 29)",
+          "oklch(80% 0.122 29)",
+          "oklch(95% 0.099 29)"
+        ],
+        "darkValue": "#e0705f"
+      },
+      "chart-teal": {
+        "role": "chart",
+        "displayName": "Teal",
+        "canonical": "oklch(64.3% 0.101 211)",
+        "tonalRamp": [
+          "oklch(15% 0.069 211)",
+          "oklch(25% 0.078 211)",
+          "oklch(35% 0.088 211)",
+          "oklch(45% 0.097 211)",
+          "oklch(55% 0.097 211)",
+          "oklch(65% 0.088 211)",
+          "oklch(80% 0.074 211)",
+          "oklch(95% 0.060 211)"
+        ],
+        "darkValue": "#4fb7c8"
+      },
+      "chart-grey": {
+        "role": "chart",
+        "displayName": "Grey",
+        "canonical": "oklch(66.2% 0.019 248)",
+        "tonalRamp": [
+          "oklch(15% 0.013 248)",
+          "oklch(25% 0.015 248)",
+          "oklch(35% 0.016 248)",
+          "oklch(45% 0.018 248)",
+          "oklch(55% 0.018 248)",
+          "oklch(65% 0.016 248)",
+          "oklch(80% 0.014 248)",
+          "oklch(95% 0.011 248)"
+        ],
+        "darkValue": "#9aa3ad"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Tab title in .page-head h2; the largest type in the Studio."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Metric-tile value in JetBrains Mono, tabular; shares the 22px ceiling with the headline."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card headings, subheads, status values."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base text on html; briefs and notes step down to 13px / 12.5px in Ink Dim."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Buttons, inputs, segmented items, chips, nav items."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Metric labels, table headers, form labels, card-head captions."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Table numerals, quote inputs, slider readouts, numeric badges, kbd, code."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Nav-group headers, status labels, source list, badges, pills."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "hover",
+        "value": "0.15s ease",
+        "purpose": "Background, color and border-color changes on buttons, nav items, chips."
+      },
+      {
+        "name": "theme-and-pane",
+        "value": "0.2s ease",
+        "purpose": "Theme swap on html/body, tab-pane fade-in, sidebar collapse and drawer slide."
+      },
+      {
+        "name": "toast",
+        "value": "0.25s ease",
+        "purpose": "Toast opacity and 8px lift."
+      },
+      {
+        "name": "spinner",
+        "value": "0.7s linear infinite",
+        "purpose": "Busy-button ring."
+      },
+      {
+        "name": "shimmer",
+        "value": "1.2s linear infinite",
+        "purpose": "4% ink sweep over a loading chart; the only gradient in the system."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none",
+        "purpose": "prefers-reduced-motion removes the pane fade and the chart shimmer."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "grid-6-collapse",
+        "value": "1400px"
+      },
+      {
+        "name": "grid-5-collapse",
+        "value": "1300px"
+      },
+      {
+        "name": "two-col-collapse",
+        "value": "1100px"
+      },
+      {
+        "name": "drawer",
+        "value": "900px"
+      },
+      {
+        "name": "two-col-floor",
+        "value": "640px"
+      }
+    ],
+    "iconography": {
+      "style": "inline SVG symbol sprite in templates/index.html",
+      "size": "16px",
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "linecap": "round",
+      "linejoin": "round",
+      "fill": "none",
+      "color": "currentColor"
+    },
+    "chartInksDark": {
+      "treasury": "#5b93c9",
+      "tips": "#5fae6e",
+      "fitted": "#e8964a",
+      "purple": "#a07fc9",
+      "pink": "#c85aa0",
+      "red": "#e0705f",
+      "teal": "#4fb7c8",
+      "grey": "#9aa3ad"
+    },
+    "chartSeriesOrder": [
+      "treasury",
+      "tips",
+      "purple",
+      "fitted",
+      "pink",
+      "teal",
+      "grey"
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single filled slate element per viewport; the estimate / fit / apply action.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Estimate</button>",
+      "css": ".ds-btn { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 500; padding: 9px 14px; border-radius: 4px; border: 1px solid var(--line-strong, #b9c0c9); background: var(--bg-1, #ffffff); color: var(--text, #111111); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; } .ds-btn:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: 2px; } .ds-btn-primary { background: var(--accent, #1f4e79); border-color: var(--accent, #1f4e79); color: var(--on-accent, #ffffff); } .ds-btn-primary:hover { background: var(--accent-hover, #17395a); border-color: var(--accent-hover, #17395a); }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Paper button with a strong hairline; hover fills recessed paper.",
+      "html": "<button class=\"ds-btn-default\">+ Add row</button>",
+      "css": ".ds-btn-default { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 500; padding: 9px 14px; border-radius: 4px; border: 1px solid var(--line-strong, #b9c0c9); background: var(--bg-1, #ffffff); color: var(--text, #111111); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s ease, border-color 0.15s ease; } .ds-btn-default:hover { background: var(--bg-2, #f4f5f7); border-color: var(--text-muted, #5b6470); } .ds-btn-default:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: 2px; } .ds-btn-default:disabled { opacity: 0.55; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Transparent secondary action with a light hairline; Export CSV, Reset, Cancel, theme toggle.",
+      "html": "<button class=\"ds-btn-ghost\">Export CSV</button>",
+      "css": ".ds-btn-ghost { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 500; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--line, #d9dde3); background: transparent; color: var(--text-dim, #3f4753); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; } .ds-btn-ghost:hover { color: var(--text, #111111); border-color: var(--line-strong, #b9c0c9); background: var(--bg-2, #f4f5f7); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: 2px; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segmented-item",
+      "description": "One ruled box of exclusive options; active item takes the 10% slate wash with slate text.",
+      "html": "<div class=\"ds-seg\" role=\"group\" aria-label=\"Model\"><button class=\"ds-seg-btn ds-active\" aria-pressed=\"true\">Nelson-Siegel</button><button class=\"ds-seg-btn\" aria-pressed=\"false\">Svensson</button><button class=\"ds-seg-btn\" aria-pressed=\"false\">Vasicek</button><button class=\"ds-seg-btn\" aria-pressed=\"false\">CIR</button></div>",
+      "css": ".ds-seg { display: inline-flex; background: var(--bg-1, #ffffff); border: 1px solid var(--line-strong, #b9c0c9); border-radius: 4px; overflow: hidden; } .ds-seg-btn { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 500; padding: 8px 13px; border: none; border-left: 1px solid var(--line, #d9dde3); background: transparent; color: var(--text-dim, #3f4753); cursor: pointer; white-space: nowrap; } .ds-seg-btn:first-child { border-left: none; } .ds-seg-btn:hover { color: var(--text, #111111); background: var(--bg-2, #f4f5f7); } .ds-seg-btn.ds-active { background: var(--accent-soft, rgba(31,78,121,0.10)); color: var(--accent, #1f4e79); font-weight: 600; } .ds-seg-btn:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: -2px; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Independent toggle for ranges, tenors, factor counts; active is slate ink and border, never a fill.",
+      "html": "<div class=\"ds-chips\" role=\"group\" aria-label=\"Maturities\"><button class=\"ds-chip\">1Y</button><button class=\"ds-chip ds-active\">2Y</button><button class=\"ds-chip ds-active\">5Y</button><button class=\"ds-chip\">7Y</button><button class=\"ds-chip ds-active\">10Y</button></div>",
+      "css": ".ds-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; } .ds-chip { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 500; padding: 6px 11px; min-height: 30px; border-radius: 4px; border: 1px solid var(--line-strong, #b9c0c9); background: transparent; color: var(--text-dim, #3f4753); cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; } .ds-chip:hover { color: var(--text, #111111); border-color: var(--text-muted, #5b6470); background: var(--bg-2, #f4f5f7); } .ds-chip.ds-active { border-color: var(--accent, #1f4e79); color: var(--accent, #1f4e79); font-weight: 600; } .ds-chip:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: 2px; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Paper field with a strong hairline; focus draws a 2px slate outline flush with the border.",
+      "html": "<input class=\"ds-input\" type=\"text\" value=\"4.05\" aria-label=\"Yield (%)\" />",
+      "css": ".ds-input { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; padding: 8px 11px; border-radius: 4px; border: 1px solid var(--line-strong, #b9c0c9); background: var(--bg-1, #ffffff); color: var(--text, #111111); } .ds-input:focus { outline: 2px solid var(--accent, #1f4e79); outline-offset: 0; border-color: var(--accent, #1f4e79); } .ds-input[aria-invalid=\"true\"] { border-color: var(--danger, #b42318); outline-color: var(--danger, #b42318); }"
+    },
+    {
+      "name": "Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar tab button; hover fills recessed paper, active draws slate text and a slate hairline on transparent.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Sections\"><div class=\"ds-nav-group\">Curve</div><button class=\"ds-nav-item ds-active\"><span class=\"ds-nav-icon\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 18 C 7 6, 11 6, 14 12 S 19 15, 21 8\"/><circle cx=\"3\" cy=\"18\" r=\"1.2\"/><circle cx=\"21\" cy=\"8\" r=\"1.2\"/></svg></span>Curve Fitter</button><button class=\"ds-nav-item\"><span class=\"ds-nav-icon\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 18 C 7 6, 11 6, 14 12 S 19 15, 21 8\"/><circle cx=\"3\" cy=\"18\" r=\"1.2\"/><circle cx=\"21\" cy=\"8\" r=\"1.2\"/></svg></span>Parameter Lab</button></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; width: 232px; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } .ds-nav-group { font-size: 11px; color: var(--text-muted, #5b6470); padding: 6px 12px 4px; } .ds-nav-item { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 12px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: var(--text-dim, #3f4753); font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease; } .ds-nav-item:hover { background: var(--bg-2, #f4f5f7); color: var(--text, #111111); } .ds-nav-item.ds-active { color: var(--accent, #1f4e79); border-color: var(--accent, #1f4e79); font-weight: 600; } .ds-nav-icon { width: 18px; display: inline-flex; justify-content: center; } .ds-nav-item:focus-visible { outline: 2px solid var(--accent, #1f4e79); outline-offset: 2px; }"
+    },
+    {
+      "name": "Metric Tile",
+      "kind": "card",
+      "refersTo": "metric",
+      "description": "Signature ruled box: label, 22px monospace tabular numeral, hint. Negative values take Down Red.",
+      "html": "<div class=\"ds-metrics\"><div class=\"ds-metric\"><div class=\"ds-metric-label\">10y term premium</div><div class=\"ds-metric-value\">0.42%</div><div class=\"ds-metric-hint\">ACM, 5 factors</div></div><div class=\"ds-metric ds-neg\"><div class=\"ds-metric-label\">Gap vs Kim-Wright</div><div class=\"ds-metric-value\">-5.1 bps</div><div class=\"ds-metric-hint\">std of monthly gap</div></div></div>",
+      "css": ".ds-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } .ds-metric { background: var(--bg-1, #ffffff); border: 1px solid var(--line, #d9dde3); border-radius: 6px; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; } .ds-metric-label { font-size: 12px; color: var(--text-dim, #3f4753); } .ds-metric-value { font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 22px; font-weight: 600; color: var(--text, #111111); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ds-metric-hint { font-size: 12px; color: var(--text-muted, #5b6470); } .ds-metric.ds-neg .ds-metric-value { color: var(--down, #c0392b); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Ruled container for charts and tables: hairline enclosure, 6px corners, head divided from body by a hairline, no shadow.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><h3>Term premium history</h3><span class=\"ds-card-muted\">Fed GSW, monthly</span></div><div class=\"ds-card-body\">Chart region</div></div>",
+      "css": ".ds-card { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-1, #ffffff); border: 1px solid var(--line, #d9dde3); border-radius: 6px; min-width: 0; } .ds-card-head { padding: 12px 20px; border-bottom: 1px solid var(--line, #d9dde3); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .ds-card-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text, #111111); } .ds-card-muted { font-size: 12px; color: var(--text-dim, #3f4753); } .ds-card-body { padding: 18px 20px 22px; color: var(--text-dim, #3f4753); font-size: 13px; }"
+    },
+    {
+      "name": "Brand Mark",
+      "kind": "custom",
+      "refersTo": "brand-mark",
+      "description": "Ruled monogram: 42px paper square, 1px slate border, slate FI. Not a filled tile, so the primary button stays the only filled accent above the fold.",
+      "html": "<div class=\"ds-brand\"><div class=\"ds-brand-mark\">FI</div><div><div class=\"ds-brand-name\">Fixed Income Studio</div><div class=\"ds-brand-sub\">Curves &middot; Rates &middot; Premia</div></div></div>",
+      "css": ".ds-brand { display: flex; gap: 12px; align-items: center; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; } .ds-brand-mark { width: 42px; height: 42px; flex: 0 0 42px; border-radius: 4px; background: var(--bg-1, #ffffff); border: 1px solid var(--accent, #1f4e79); display: grid; place-items: center; font-weight: 700; letter-spacing: 0.5px; color: var(--accent, #1f4e79); } .ds-brand-name { font-size: 15px; font-weight: 700; color: var(--text, #111111); white-space: nowrap; } .ds-brand-sub { font-size: 11px; color: var(--text-muted, #5b6470); letter-spacing: 0.2px; white-space: nowrap; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Statistical Release",
+    "overview": "The Studio is set like a Federal Reserve statistical release, not like a dashboard. Everything sits on pure white paper in near-black ink; regions are separated by 1 px hairline rules rather than by tone, shadow or fill; and a single slate blue is the only color allowed to mean \"live\": links, focus edges, the active tab, the selected chip, the range-slider thumb, and one filled Estimate button per viewport. Nothing glows, nothing is blurred, nothing carries a gradient. The reader is meant to recognise a document they already trust before they read a single number.\n\nDensity is high but ordered: eight tabs share one shell, each opening with a title and a one-paragraph brief, then a controls strip, then a row of ruled metric tiles carrying monospace numerals, then charts. Type stays small and steady (nothing above 22 px) so the numbers, not the chrome, carry the weight. Chart inks follow the Monetary Policy Report set of seven, chosen so seven lines stay apart on both paper and charcoal. The dark theme is the same document printed on neutral charcoal; it is never tinted, and the slate lifts one step so it keeps reading as ink.\n\nConfirmed rejections: the build refuses the dark-SaaS arrangement of glowing cards on a gradient, blue-purple accent pairs, glass or blur, and any accent that decorates rather than signals.",
+    "keyCharacteristics": [
+      "White paper, near-black ink, 1 px hairline rules; two shades of hairline (region vs control).",
+      "One live color. Slate blue owns every interactive state; only the primary button is filled with it.",
+      "Active states are drawn in accent ink or a 10% wash on paper, never as a solid fill.",
+      "Every measured quantity is set in JetBrains Mono with tabular numerals; prose and labels in Inter.",
+      "No shadows, no blur, no gradients except a 4% loading shimmer; depth is a second, slightly recessed paper.",
+      "Squared corners: 4 px on controls, 6 px on cards and metric tiles.",
+      "Icons are one inline SVG sprite, 16 px, 1.75 stroke, round caps.",
+      "Dark theme is neutral charcoal with the same rules and a lifted accent."
+    ],
+    "rules": [
+      {
+        "name": "The One Live Color Rule",
+        "body": "Slate is the only hue that may signal interactivity or currency. If a second accent seems necessary, the answer is a hairline, a weight change, or a semantic ink, never a new hue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-Not-Fill Rule",
+        "body": "Active and selected states are drawn as slate text plus a slate 1 px border (nav, chip) or a 10% slate wash (segmented), on paper. The primary button is the single filled slate element allowed above the fold.",
+        "section": "colors"
+      },
+      {
+        "name": "The Neutral Charcoal Rule",
+        "body": "The dark theme is the same document on grey paper. Surfaces and hairlines stay neutral; only the accent and semantic inks lift one step for contrast. No tinted blacks, no blue-black.",
+        "section": "colors"
+      },
+      {
+        "name": "The Seven Inks Rule",
+        "body": "Chart series take the MPR inks in `SERIES_ORDER`, per theme, via `seriesColor(i)`. Series colors never come from the UI palette and UI accents never come from the chart set.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measured-in-Mono Rule",
+        "body": "Anything that is a quantity (metric values, table numerics, badge numbers, parameter readouts, tenors in code) is set in JetBrains Mono with `tabular-nums`. Anything that names or explains is set in Inter. Never mix the two inside one number.",
+        "section": "typography"
+      },
+      {
+        "name": "The 22-Point Ceiling Rule",
+        "body": "No type exceeds 22px. Hierarchy comes from weight (400 / 500 / 600 / 700), color (Ink / Ink Dim / Ink Muted) and hairline rules, not from size jumps.",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Eyebrow Rule",
+        "body": "There are no uppercase tracked labels anywhere in the build; `.metric .sym` explicitly resets `text-transform` and `letter-spacing`. Labels are sentence case at 11-12px in Ink Dim or Ink Muted.",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Shadow Rule",
+        "body": "Nothing casts a shadow, at rest or on hover. If an element needs to separate from its surroundings, give it a hairline or set it on recessed paper.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Two-Papers Rule",
+        "body": "There are exactly two surface tones per theme: paper and recessed paper. A third tone is not a design decision available to new surfaces.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use `var(--accent)` for every interactive signal: link colour, `:focus-visible` outline (2px, 2px offset), active nav/chip/segmented text, slider thumb, selection.",
+      "**Do** set every measured quantity in JetBrains Mono with `font-variant-numeric: tabular-nums`, and keep labels in Inter.",
+      "**Do** separate regions with 1 px `var(--line)` rules and controls with 1 px `var(--line-strong)` borders; use `var(--bg-2)` recessed paper as the only second surface.",
+      "**Do** keep corners at 4px for controls and 6px for cards and metric tiles.",
+      "**Do** reserve the `-soft` washes for semantic content (stale, error, heat cells, cheap/rich pills) and the accent wash for the active segmented item.",
+      "**Do** take chart series colours from `seriesColor(i)` so the seven MPR inks and their dark lifts stay in step with the theme.",
+      "**Do** keep hover and state transitions at 0.15-0.2s ease and honour `prefers-reduced-motion`.",
+      "**Do** draw new icons into the shell sprite at 24-unit viewBox, stroke 1.75, round caps, rendered at 16px in `currentColor`."
+    ],
+    "donts": [
+      "**Don't** add a `box-shadow`, `backdrop-filter`, or any gradient other than the loading shimmer.",
+      "**Don't** introduce a second accent hue or tint the dark theme's greys; charcoal stays neutral and the accent lifts instead.",
+      "**Don't** fill an active nav item, chip or segmented item with solid slate; the primary button is the only filled accent element per viewport.",
+      "**Don't** set type above 22px or below 11px; carry hierarchy with weight, ink tone and rules.",
+      "**Don't** use uppercase tracked labels, kickers or eyebrows; the build has none and labels are sentence case.",
+      "**Don't** colour a negative number with the error red; negatives are Down Red, errors are Danger Brick.",
+      "**Don't** let chart series borrow UI colours or UI accents borrow chart inks."
+    ]
+  }
+}

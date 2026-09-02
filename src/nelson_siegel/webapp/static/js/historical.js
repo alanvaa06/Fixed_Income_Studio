@@ -32,7 +32,7 @@
       if (j.rmse_bps) {
         S.plot("chart-hist-rmse", [{
           x: j.dates, y: j.rmse_bps, name: "Fit RMSE", mode: "lines", fill: "tozeroy",
-          line: { color: COLOR.fitted, width: 1.5 }, fillcolor: "rgba(245, 158, 11, 0.12)",
+          line: { color: COLOR.fitted, width: 1.5 }, fillcolor: S.hex2rgba(COLOR.fitted, 0.12),
           hovertemplate: "%{x} · <b>%{y:.1f} bps</b><extra></extra>",
         }], S.layoutWith("Date", "RMSE (bps)", { hovermode: "x" }));
       }

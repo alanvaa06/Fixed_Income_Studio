@@ -7,25 +7,28 @@ window.Studio = (function () {
 
   // ---------------------------------------------------------------- Theme
   const THEME_KEY = "fi-studio-theme";
+  // Statistical-release chart theme: ink on paper, hairline grid, one ink per series.
   const THEMES = {
     dark: {
-      font: "#cdd5e3", grid: "rgba(255,255,255,0.06)", zero: "rgba(255,255,255,0.12)",
-      hoverBg: "#1c2742", hoverBorder: "rgba(255,255,255,0.14)", obs: "#cbd5e1",
+      font: "#b3b9c2", grid: "#2c3138", zero: "#3d434c",
+      hoverBg: "#1e2227", hoverBorder: "#3d434c", obs: "#e8eaed", paper: "#16191d",
     },
     light: {
-      font: "#334155", grid: "rgba(15,23,42,0.08)", zero: "rgba(15,23,42,0.18)",
-      hoverBg: "#ffffff", hoverBorder: "rgba(15,23,42,0.15)", obs: "#475569",
+      font: "#3f4753", grid: "#e4e7eb", zero: "#b9c0c9",
+      hoverBg: "#ffffff", hoverBorder: "#b9c0c9", obs: "#111111", paper: "#ffffff",
     },
   };
   function getTheme() {
-    try { return window.localStorage.getItem(THEME_KEY) || "dark"; } catch (_) { return "dark"; }
+    try { return window.localStorage.getItem(THEME_KEY) || "light"; } catch (_) { return "light"; }
   }
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     const btn = $("#btn-theme");
     if (btn) {
       btn.setAttribute("aria-label", theme === "dark" ? "Switch to light theme" : "Switch to dark theme");
-      btn.innerHTML = theme === "dark" ? "&#9788; Light" : "&#9790; Dark";
+      btn.innerHTML = theme === "dark"
+        ? '<svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg> Light'
+        : '<svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg> Dark';
     }
   }
   function setTheme(theme) {
@@ -35,17 +38,27 @@ window.Studio = (function () {
   }
   function toggleTheme() { setTheme(getTheme() === "dark" ? "light" : "dark"); }
 
-  const COLOR = {
-    treasury: "#6aa9ff",
-    tips: "#34d399",
-    fitted: "#f59e0b",
-    purple: "#a78bfa",
-    pink: "#f472b6",
-    red: "#ef4444",
-    teal: "#2dd4bf",
-    get obs() { return THEMES[getTheme()].obs; },
+  // Monetary Policy Report inks; the dark theme lifts each one step so seven lines stay apart on charcoal.
+  const INKS = {
+    light: { treasury: "#2f6ea8", tips: "#3a8f4a", fitted: "#d97a1f", purple: "#7d5aa6", pink: "#a83279", red: "#c8473a", teal: "#2a9db0", grey: "#8a949e" },
+    dark:  { treasury: "#5b93c9", tips: "#5fae6e", fitted: "#e8964a", purple: "#a07fc9", pink: "#c85aa0", red: "#e0705f", teal: "#4fb7c8", grey: "#9aa3ad" },
   };
-  const SERIES = ["#6aa9ff", "#34d399", "#a78bfa", "#f59e0b", "#f472b6", "#2dd4bf", "#fb923c"];
+  const inks = () => INKS[getTheme()] || INKS.light;
+  const COLOR = {
+    get treasury() { return inks().treasury; },
+    get tips() { return inks().tips; },
+    get fitted() { return inks().fitted; },
+    get purple() { return inks().purple; },
+    get pink() { return inks().pink; },
+    get red() { return inks().red; },
+    get teal() { return inks().teal; },
+    get obs() { return THEMES[getTheme()].obs; },
+    get paper() { return THEMES[getTheme()].paper; },
+  };
+  const SERIES_ORDER = ["treasury", "tips", "purple", "fitted", "pink", "teal", "grey"];
+  function seriesColor(i) { return inks()[SERIES_ORDER[i % SERIES_ORDER.length]]; }
+  // Kept for callers that read the array at load; prefer seriesColor(i) so the theme applies.
+  const SERIES = SERIES_ORDER.map((k) => INKS.light[k]);
 
   // ---------------------------------------------------------------- Charts
   const hasPlotly = typeof window.Plotly !== "undefined";
@@ -429,7 +442,7 @@ window.Studio = (function () {
   }
 
   return {
-    $, $$, COLOR, SERIES, state, saveSettings, toast, setBusy, fmt, fmtPct, fmtBps, signed, tenorLabel,
+    $, $$, COLOR, SERIES, seriesColor, state, saveSettings, toast, setBusy, fmt, fmtPct, fmtBps, signed, tenorLabel,
     setSegmented, activateSegmentedByData, bindSegmented, bindChips, setChips, isoDate, rangeDates,
     downloadCSV, renderTable, heatClass, metricTile, plot, layoutWith, setChartLoading, hex2rgba, bandTraces,
     api, postJSON, registerTab, showTab, updateDataStatus, refreshStatus, modelInfo, boot, getTheme, hasPlotly,

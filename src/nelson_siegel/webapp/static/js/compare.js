@@ -26,7 +26,7 @@
         { x: j.dates, y: j.treasury_level, name: "Treasury Level", line: { color: COLOR.treasury, width: 2 }, mode: "lines" },
         { x: j.dates, y: j.tips_level, name: "TIPS Level", line: { color: COLOR.tips, width: 2 }, mode: "lines" },
         { x: j.dates, y: j.breakeven, name: "Breakeven inflation", line: { color: COLOR.fitted, width: 2.5, dash: "dot" }, mode: "lines",
-          fill: "tozeroy", fillcolor: "rgba(245, 158, 11, 0.08)" },
+          fill: "tozeroy", fillcolor: S.hex2rgba(COLOR.fitted, 0.08) },
       ], S.layoutWith("Date", "Yield / Spread (%)"));
       $("#c-corr-level").textContent = fmt(j.correlations.Level, 3);
       $("#c-corr-slope").textContent = fmt(j.correlations.Slope, 3);

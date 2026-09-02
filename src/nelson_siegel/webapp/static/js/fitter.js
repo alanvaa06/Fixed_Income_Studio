@@ -73,7 +73,7 @@
   function plotFit(result) {
     const traces = [
       { x: result.maturities, y: result.observed, mode: "markers", name: "Observed",
-        marker: { color: COLOR.obs, size: 9, line: { color: "#1c2742", width: 1 } },
+        marker: { color: COLOR.obs, size: 9, line: { color: COLOR.paper, width: 1 } },
         hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Observed</extra>" },
       { x: result.smooth.maturities, y: result.smooth.yields, mode: "lines", name: `${result.model_name || "Model"} fit`,
         line: { color: COLOR.fitted, width: 3, shape: "spline" }, hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Fit</extra>" },
@@ -101,9 +101,9 @@
       badges.appendChild(b);
     };
     add(result.model_name || "Model");
-    add(`RMSE ${result.rmse_bps.toFixed(1)} bps`, result.rmse_bps < 5 ? "ok" : result.rmse_bps < 15 ? "" : "warn");
-    if (typeof result.r_squared === "number") add(`R² ${result.r_squared.toFixed(4)}`);
-    if (result.n_points) add(`${result.n_points} pts`);
+    add(`RMSE ${result.rmse_bps.toFixed(1)} bps`, result.rmse_bps < 5 ? "ok" : result.rmse_bps < 15 ? "num" : "warn");
+    if (typeof result.r_squared === "number") add(`R² ${result.r_squared.toFixed(4)}`, "num");
+    if (result.n_points) add(`${result.n_points} pts`, "num");
     if (result.decay_at_bound) add(result.family === "short-rate" ? "parameter at search bound" : "τ at search bound", "warn");
     $("#btn-fit-export").disabled = false;
     $("#fit-family-note").textContent = result.family === "short-rate"

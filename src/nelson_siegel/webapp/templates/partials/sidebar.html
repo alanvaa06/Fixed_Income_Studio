@@ -5,22 +5,22 @@
       <h1>Fixed Income Studio</h1>
       <p>Curves &middot; Rates &middot; Premia</p>
     </div>
-    <button class="btn small ghost collapse-btn" id="btn-collapse" title="Collapse sidebar" aria-label="Collapse sidebar">&laquo;</button>
+    <button class="btn small ghost collapse-btn" id="btn-collapse" title="Collapse sidebar" aria-label="Collapse sidebar"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
   </div>
 
   <nav class="nav" aria-label="Sections">
     <div class="nav-group">Curve</div>
-    <button class="nav-item active" data-tab="fitter" title="Alt+1"><span class="nav-icon">&#9684;</span><span class="nav-label">Curve Fitter</span></button>
-    <button class="nav-item" data-tab="explorer" title="Alt+2"><span class="nav-icon">&#9881;</span><span class="nav-label">Parameter Lab</span></button>
+    <button class="nav-item active" data-tab="fitter" title="Alt+1"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-curve"/></svg></span><span class="nav-label">Curve Fitter</span></button>
+    <button class="nav-item" data-tab="explorer" title="Alt+2"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg></span><span class="nav-label">Parameter Lab</span></button>
     <div class="nav-group">Dynamics</div>
-    <button class="nav-item" data-tab="historical" title="Alt+3"><span class="nav-icon">&#9696;</span><span class="nav-label">Historical Factors</span></button>
-    <button class="nav-item" data-tab="compare" title="Alt+4"><span class="nav-icon">&#10696;</span><span class="nav-label">Treasury vs TIPS</span></button>
+    <button class="nav-item" data-tab="historical" title="Alt+3"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg></span><span class="nav-label">Historical Factors</span></button>
+    <button class="nav-item" data-tab="compare" title="Alt+4"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-compare"/></svg></span><span class="nav-label">Treasury vs TIPS</span></button>
     <div class="nav-group">Rates &amp; premia</div>
-    <button class="nav-item" data-tab="shortrate" title="Alt+5"><span class="nav-icon">&#8767;</span><span class="nav-label">Short-Rate Models</span></button>
-    <button class="nav-item" data-tab="termpremium" title="Alt+6"><span class="nav-icon">&#9650;</span><span class="nav-label">Term Premium</span></button>
+    <button class="nav-item" data-tab="shortrate" title="Alt+5"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-shortrate"/></svg></span><span class="nav-label">Short-Rate Models</span></button>
+    <button class="nav-item" data-tab="termpremium" title="Alt+6"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-premium"/></svg></span><span class="nav-label">Term Premium</span></button>
     <div class="nav-group">Tools</div>
-    <button class="nav-item" data-tab="analytics" title="Alt+7"><span class="nav-icon">&#9878;</span><span class="nav-label">Curve Analytics</span></button>
-    <button class="nav-item" data-tab="learn" title="Alt+8"><span class="nav-icon">&#9432;</span><span class="nav-label">Learn</span></button>
+    <button class="nav-item" data-tab="analytics" title="Alt+7"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-bars"/></svg></span><span class="nav-label">Curve Analytics</span></button>
+    <button class="nav-item" data-tab="learn" title="Alt+8"><span class="nav-icon"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg></span><span class="nav-label">Learn</span></button>
   </nav>
 
   <div class="sidebar-bottom">
@@ -40,14 +40,14 @@
       </label>
       <div class="api-key-row">
         <input class="input" id="fred-api-key" type="password" placeholder="Paste your FRED API key" autocomplete="off" spellcheck="false" />
-        <button class="btn small primary" type="submit">Apply</button>
+        <button class="btn small" type="submit">Apply</button>
       </div>
       <p class="api-key-note" id="fred-key-note">Stored only for this running app session.</p>
     </form>
 
     <div class="footer-mini">
       <span id="app-version">v{{ version }}</span>
-      <button class="btn small ghost" id="btn-theme" title="Toggle theme (Alt+T)">&#9788; Light</button>
+      <button class="btn small ghost" id="btn-theme" title="Toggle theme (Alt+T)"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg> Dark</button>
       <a href="https://github.com/alanvaa06/Nelson_Siegel_Model" target="_blank" rel="noreferrer">GitHub</a>
     </div>
   </div>

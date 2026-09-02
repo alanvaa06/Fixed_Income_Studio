@@ -70,7 +70,7 @@
     ], j.forwards);
     const sh = j.spread_history;
     const names = Object.keys(sh).filter((k) => k !== "dates" && ["2s10s", "5s30s", "3m10y", "2s5s10s"].includes(k));
-    S.plot("chart-an-spreads", names.map((k, i) => ({ x: sh.dates, y: sh[k], name: k, mode: "lines", line: { color: SERIES[i % SERIES.length], width: 1.8 } })),
+    S.plot("chart-an-spreads", names.map((k, i) => ({ x: sh.dates, y: sh[k], name: k, mode: "lines", line: { color: S.seriesColor(i), width: 1.8 } })),
       S.layoutWith("Date", "Spread (bps)", { yaxis: { zeroline: true } }));
   }
 
@@ -90,7 +90,7 @@
     if (!j.pca) { $("#an-pca-note").textContent = "Not enough history for a PCA."; return; }
     const p = j.pca;
     const names = p.components || Object.keys(p.loadings);
-    S.plot("chart-an-pca", names.map((n, i) => ({ x: p.maturities, y: p.loadings[n], name: `${n} (${(p.explained_variance[i] * 100).toFixed(1)}%)`, mode: "lines+markers", line: { color: SERIES[i], width: 2 } })),
+    S.plot("chart-an-pca", names.map((n, i) => ({ x: p.maturities, y: p.loadings[n], name: `${n} (${(p.explained_variance[i] * 100).toFixed(1)}%)`, mode: "lines+markers", line: { color: S.seriesColor(i), width: 2 } })),
       S.layoutWith("Maturity (years)", "Loading", { yaxis: { zeroline: true } }));
     const total = p.explained_variance.reduce((a, b) => a + b, 0) * 100;
     $("#an-pca-note").textContent = `${p.n_obs} daily changes · three components explain ${total.toFixed(1)}% of curve moves.`;

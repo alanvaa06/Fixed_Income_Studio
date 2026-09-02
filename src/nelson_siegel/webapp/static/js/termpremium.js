@@ -103,7 +103,7 @@
     const tp = j.term_premium;
     const traces = [];
     j.maturities.forEach((m, i) => {
-      const color = SERIES[i % SERIES.length];
+      const color = S.seriesColor(i);
       traces.push({ x: tp.dates, y: tp[String(m)].map((v) => v * 100), name: `${S.tenorLabel(m)} ACM`, mode: "lines", line: { color, width: 2 },
         hovertemplate: `%{x} · <b>%{y:.0f} bps</b><extra>${S.tenorLabel(m)} ACM</extra>` });
       if (j.dns && j.dns.term_premium[String(m)]) {

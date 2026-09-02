@@ -163,3 +163,14 @@ config/secrets.py
 temp/
 tmp/
 *.tmp
+
+# Impeccable design tooling: keep briefs, critiques and config; drop captures, build state and local overrides
+.impeccable/review/
+.impeccable/build/
+.impeccable/mocks/
+.impeccable/config.local.json
+.impeccable/live/
+.impeccable/questions/
+
+# Claude Code local settings (launch.json is shared)
+.claude/settings.local.json
