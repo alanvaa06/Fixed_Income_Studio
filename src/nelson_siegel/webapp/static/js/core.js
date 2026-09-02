@@ -119,7 +119,7 @@ window.Studio = (function () {
     histBondType: "treasury", histModel: "nelson-siegel", histRange: "1", cmpRange: "1",
     showForward: false, fcMethod: "ar", fcHorizon: "12",
     srModel: "vasicek", srMethod: "ols", srProxy: "policy", srRange: "20", srHorizon: "5",
-    tpSource: "gsw", tpRange: "20", tpFactors: "3", tpDns: "var", tpFocus: "10", tpMaturities: ["2", "5", "10"],
+    tpSource: "gsw", tpRange: "max", tpFactors: "5", tpDns: "var", tpFocus: "10", tpMaturities: ["2", "5", "10"],
     anBondType: "treasury", anModel: "nelson-siegel", anHorizon: "1",
     sidebarCollapsed: false, lastTab: "fitter",
   };
