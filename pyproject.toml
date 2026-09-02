@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nelson-siegel"
-version = "1.2.0"
-description = "Nelson-Siegel Model for Yield Curve Analysis with Treasury and TIPS data"
+version = "2.0.0"
+description = "Fixed-income toolkit: Nelson-Siegel/Svensson curves, Diebold-Li dynamics, Vasicek/CIR short rates, ACM term premia, bond analytics and a web studio"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
     {name = "Economics Research Team", email = "research@example.com"}
 ]
-keywords = ["finance", "yield-curve", "nelson-siegel", "treasury", "tips", "economics"]
+keywords = ["finance", "yield-curve", "nelson-siegel", "svensson", "vasicek", "cir", "term-premium", "treasury", "tips", "fixed-income"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
@@ -103,6 +103,7 @@ include = ["nelson_siegel*"]
 nelson_siegel = [
     "py.typed",
     "webapp/templates/*.html",
+    "webapp/templates/partials/*.html",
     "webapp/static/css/*.css",
     "webapp/static/js/*.js",
 ]

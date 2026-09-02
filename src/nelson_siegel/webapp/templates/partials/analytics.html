@@ -1,0 +1,106 @@
+<!-- ============================ CURVE ANALYTICS ======================== -->
+<section class="tab-pane" data-tab-pane="analytics">
+  <header class="page-head">
+    <div>
+      <h2>Curve Analytics</h2>
+      <p class="muted">A desk view of the latest curve: what moved, what the forwards imply, where the carry is, what looks rich or cheap, and a bond calculator priced off the fitted curve.</p>
+    </div>
+    <div class="page-actions">
+      <div class="segmented" role="group" aria-label="Bond type">
+        <button class="seg-btn active" data-an-bond="treasury" aria-pressed="true">Treasury</button>
+        <button class="seg-btn" data-an-bond="tips" aria-pressed="false">TIPS</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Curve model">
+        <button class="seg-btn active" data-an-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+        <button class="seg-btn" data-an-model="svensson" aria-pressed="false">Svensson</button>
+        <button class="seg-btn" data-an-model="vasicek" aria-pressed="false">Vasicek</button>
+        <button class="seg-btn" data-an-model="cir" aria-pressed="false">CIR</button>
+      </div>
+      <span class="muted">Horizon</span>
+      <div class="chips" role="group" aria-label="Carry horizon" id="an-horizon-chips">
+        <button class="chip" data-an-horizon="0.25">3M</button>
+        <button class="chip" data-an-horizon="0.5">6M</button>
+        <button class="chip active" data-an-horizon="1">1Y</button>
+        <button class="chip" data-an-horizon="2">2Y</button>
+      </div>
+      <button class="btn primary" id="btn-an-run">Refresh</button>
+    </div>
+  </header>
+
+  <p class="muted empty-state" id="an-empty">Loading the latest curve&hellip;</p>
+  <div id="an-results" hidden>
+    <div class="grid grid-5" id="an-metrics"></div>
+    <p class="muted note" id="an-source-note"></p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h3>Curve moves</h3><span class="muted">Basis points versus N observations ago</span></div>
+        <div class="card-body">
+          <div class="table-wrap"><table class="data-table compact" id="an-changes-table"></table></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Today vs 1M and 1Y ago</h3></div>
+        <div class="card-body"><div id="chart-an-curve" class="chart"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Carry &amp; roll-down</h3><span class="muted">Return from holding each tenor over the horizon if the curve stays put. Positive total = the trade beats the forwards.</span></div>
+      <div class="card-body">
+        <div class="grid grid-2">
+          <div class="table-wrap"><table class="data-table compact" id="an-carry-table"></table></div>
+          <div id="chart-an-carry" class="chart"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h3>Forwards</h3><span class="muted">What the curve implies for future rates</span></div>
+        <div class="card-body"><div class="table-wrap"><table class="data-table compact" id="an-forwards-table"></table></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Spreads &amp; butterflies, last year</h3></div>
+        <div class="card-body"><div id="chart-an-spreads" class="chart"></div></div>
+      </div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h3>Rich / cheap vs the model</h3><span class="muted">Residual = observed &minus; fitted; z uses the cross-section</span></div>
+        <div class="card-body"><div class="table-wrap"><table class="data-table compact" id="an-rich-table"></table></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Principal components of daily changes</h3><span class="muted" id="an-pca-note"></span></div>
+        <div class="card-body"><div id="chart-an-pca" class="chart"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Bond calculator</h3><span class="muted">Priced off the selected model and bond type. Leave the price blank to price at the model curve.</span></div>
+    <div class="card-body">
+      <form class="bond-form" id="bond-form">
+        <label>Maturity (years)<input class="input" id="bond-maturity" type="number" step="0.25" min="0.25" max="100" value="10" /></label>
+        <label>Coupon (%)<input class="input" id="bond-coupon" type="number" step="0.125" min="0" value="4.0" /></label>
+        <label>Frequency<select class="input" id="bond-frequency"><option value="2">Semi-annual</option><option value="1">Annual</option><option value="4">Quarterly</option><option value="12">Monthly</option></select></label>
+        <label>Market price (optional)<input class="input" id="bond-price" type="number" step="0.001" min="1" placeholder="e.g. 98.50" /></label>
+        <button class="btn primary" id="btn-bond-run" type="submit">Price &amp; risk</button>
+      </form>
+      <div id="bond-results" hidden>
+        <div class="grid grid-4" id="bond-metrics"></div>
+        <div class="grid grid-2-1">
+          <div>
+            <h4 class="subhead">Key-rate durations</h4>
+            <div id="chart-bond-krd" class="chart small"></div>
+          </div>
+          <div>
+            <h4 class="subhead">Cash flows</h4>
+            <div class="table-wrap scroll"><table class="data-table compact" id="bond-cashflows"></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

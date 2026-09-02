@@ -1,0 +1,94 @@
+<!-- ============================ TERM PREMIUM =========================== -->
+<section class="tab-pane" data-tab-pane="termpremium">
+  <header class="page-head">
+    <div>
+      <h2>Term Premium</h2>
+      <p class="muted">Split long yields into expected short rates and the premium for bearing duration risk. Adrian-Crump-Moench affine model on a monthly zero curve, cross-checked with a Diebold-Li expectations split and the classic regression tests.</p>
+    </div>
+    <div class="page-actions">
+      <div class="segmented" role="group" aria-label="Zero-curve source">
+        <button class="seg-btn active" data-tp-source="gsw" aria-pressed="true" title="Fed Board Gurkaynak-Sack-Wright fitted curve, daily since 1961">Fed GSW</button>
+        <button class="seg-btn" data-tp-source="treasury" aria-pressed="false" title="This app's Nelson-Siegel factor history">Treasury NS</button>
+        <button class="seg-btn" data-tp-source="tips" aria-pressed="false" title="Real term premium from the TIPS factor history">TIPS NS</button>
+      </div>
+      <div class="chips" role="group" aria-label="Sample" id="tp-chips">
+        <button class="chip" data-tp-range="10">10Y</button>
+        <button class="chip" data-tp-range="20">20Y</button>
+        <button class="chip" data-tp-range="35">35Y</button>
+        <button class="chip" data-tp-range="max">Max</button>
+      </div>
+      <input type="date" id="tp-start" class="input" aria-label="Start date" />
+      <input type="date" id="tp-end" class="input" aria-label="End date" />
+      <span class="muted">Tenors</span>
+      <div class="chips" role="group" aria-label="Maturities" id="tp-mat-chips">
+        <button class="chip" data-tp-mat="1">1Y</button>
+        <button class="chip active" data-tp-mat="2">2Y</button>
+        <button class="chip active" data-tp-mat="5">5Y</button>
+        <button class="chip" data-tp-mat="7">7Y</button>
+        <button class="chip active" data-tp-mat="10">10Y</button>
+      </div>
+      <span class="muted">Factors</span>
+      <div class="chips" role="group" aria-label="Pricing factors" id="tp-factor-chips">
+        <button class="chip" data-tp-factors="2">2</button>
+        <button class="chip active" data-tp-factors="3">3</button>
+        <button class="chip" data-tp-factors="5">5</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Diebold-Li dynamics">
+        <button class="seg-btn" data-tp-dns="rw" aria-pressed="false">RW</button>
+        <button class="seg-btn" data-tp-dns="ar" aria-pressed="false">AR(1)</button>
+        <button class="seg-btn active" data-tp-dns="var" aria-pressed="true">VAR(1)</button>
+      </div>
+      <button class="btn primary" id="btn-tp-run">Estimate</button>
+    </div>
+  </header>
+
+  <p class="muted empty-state" id="tp-empty">Estimating the affine model&hellip;</p>
+  <div id="tp-results" hidden>
+    <div class="grid grid-6" id="tp-metrics"></div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Term premium history</h3>
+        <div class="card-tools">
+          <span class="muted" id="tp-source-note"></span>
+          <button class="btn small ghost" id="btn-tp-export" disabled>Export CSV</button>
+        </div>
+      </div>
+      <div class="card-body"><div id="chart-tp-history" class="chart tall"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Yield decomposition</h3>
+        <div class="card-tools">
+          <span class="muted">Tenor</span>
+          <div class="chips" role="group" aria-label="Decomposition tenor" id="tp-focus-chips"></div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="chart-tp-decomp" class="chart"></div>
+        <p class="muted note" id="tp-decomp-note"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Expectations-hypothesis tests</h3>
+        <span class="muted">Campbell-Shiller: slope = 1 under the EH (negative means premia move a lot). Fama-Bliss: slope = 0 under the EH (near 1 means forwards forecast returns, not rates). Newey-West t-stats.</span>
+      </div>
+      <div class="card-body"><div class="table-wrap"><table class="data-table" id="tp-regressions"></table></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>How the estimate is built</h3></div>
+    <div class="card-body learn">
+      <ol class="steps">
+        <li><b>Factors.</b> Principal components of the monthly zero-coupon panel (1 to 120 months) become the pricing factors; a VAR(1) gives their dynamics.</li>
+        <li><b>Excess returns.</b> One-month holding returns of every maturity are regressed on the factor innovations and lagged factors. The loadings on innovations measure exposure to risk; the intercepts and lagged-factor coefficients identify the prices of risk &lambda;<sub>0</sub> and &lambda;<sub>1</sub>.</li>
+        <li><b>Recursions.</b> Bond prices follow the affine recursions with the prices of risk (fitted yields) and with them set to zero (risk-neutral yields). Term premium = fitted &minus; risk-neutral. The expectations line is the average expected short rate; the small residual is convexity.</li>
+        <li><b>Sanity checks.</b> The Diebold-Li split does the same accounting with the Nelson-Siegel factors (short rate = Level + Slope) and AR/VAR dynamics. The regressions test whether expectations alone explain the curve.</li>
+      </ol>
+    </div>
+  </div>
+</section>

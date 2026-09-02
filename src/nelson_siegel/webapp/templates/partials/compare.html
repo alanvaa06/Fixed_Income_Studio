@@ -1,0 +1,39 @@
+<!-- ============================ COMPARE TAB ============================ -->
+<section class="tab-pane" data-tab-pane="compare">
+  <header class="page-head">
+    <div>
+      <h2>Treasury vs TIPS</h2>
+      <p class="muted">Compare nominal and real curves. The level differential is breakeven inflation: what the market expects inflation to average, plus an inflation risk premium.</p>
+    </div>
+    <div class="page-actions">
+      <div class="chips" role="group" aria-label="Quick range" id="cmp-chips">
+        <button class="chip" data-cmp-range="1">1Y</button>
+        <button class="chip" data-cmp-range="3">3Y</button>
+        <button class="chip" data-cmp-range="5">5Y</button>
+        <button class="chip" data-cmp-range="10">10Y</button>
+      </div>
+      <input type="date" id="cmp-start" class="input" aria-label="Start date" />
+      <input type="date" id="cmp-end" class="input" aria-label="End date" />
+      <button class="btn primary" id="btn-cmp-run">Run comparison</button>
+      <span class="muted" id="cmp-status"></span>
+    </div>
+  </header>
+
+  <div class="grid grid-5">
+    <div class="metric"><span class="metric-label">Latest breakeven</span><span class="metric-value" id="c-breakeven">&mdash;</span><span class="metric-hint">Treasury level &minus; TIPS level</span></div>
+    <div class="metric"><span class="metric-label">Level corr.</span><span class="metric-value" id="c-corr-level">&mdash;</span></div>
+    <div class="metric"><span class="metric-label">Slope corr.</span><span class="metric-value" id="c-corr-slope">&mdash;</span></div>
+    <div class="metric"><span class="metric-label">Curvature corr.</span><span class="metric-value" id="c-corr-curv">&mdash;</span></div>
+    <div class="metric"><span class="metric-label">Common dates</span><span class="metric-value" id="c-obs">&mdash;</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>Levels &amp; breakeven inflation</h3>
+      <button class="btn small ghost" id="btn-cmp-export" disabled>Export CSV</button>
+    </div>
+    <div class="card-body">
+      <div id="chart-compare" class="chart tall"></div>
+    </div>
+  </div>
+</section>

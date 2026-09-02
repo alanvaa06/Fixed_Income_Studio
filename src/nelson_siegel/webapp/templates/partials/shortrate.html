@@ -1,0 +1,79 @@
+<!-- =========================== SHORT-RATE MODELS ======================= -->
+<section class="tab-pane" data-tab-pane="shortrate">
+  <header class="page-head">
+    <div>
+      <h2>Short-Rate Models</h2>
+      <p class="muted">Estimate Vasicek or CIR dynamics from a short-rate history, calibrate the same model to today's curve, and compare what the data says (physical measure) with what the curve prices (risk-neutral measure).</p>
+    </div>
+    <div class="page-actions">
+      <div class="segmented" role="group" aria-label="Model">
+        <button class="seg-btn active" data-sr-model="vasicek" aria-pressed="true" title="dr = κ(θ − r)dt + σ dW">Vasicek</button>
+        <button class="seg-btn" data-sr-model="cir" aria-pressed="false" title="dr = κ(θ − r)dt + σ√r dW">CIR</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Estimator">
+        <button class="seg-btn active" data-sr-method="ols" aria-pressed="true" title="Regression on the exact discretisation">OLS</button>
+        <button class="seg-btn" data-sr-method="mle" aria-pressed="false" title="Exact transition-density likelihood">MLE</button>
+      </div>
+      <select class="input" id="sr-proxy" aria-label="Short-rate proxy">
+        <option value="policy">Fed funds (effective)</option>
+        <option value="1m">1M bill</option>
+        <option value="3m">3M bill</option>
+        <option value="6m">6M bill</option>
+        <option value="1y">1Y note</option>
+      </select>
+      <div class="chips" role="group" aria-label="History" id="sr-chips">
+        <button class="chip" data-sr-range="5">5Y</button>
+        <button class="chip" data-sr-range="10">10Y</button>
+        <button class="chip" data-sr-range="20">20Y</button>
+        <button class="chip" data-sr-range="30">30Y</button>
+      </div>
+      <input type="date" id="sr-start" class="input" aria-label="Start date" />
+      <input type="date" id="sr-end" class="input" aria-label="End date" />
+      <div class="chips" role="group" aria-label="Simulation horizon" id="sr-horizon-chips">
+        <button class="chip" data-sr-horizon="2">2y</button>
+        <button class="chip" data-sr-horizon="5">5y</button>
+        <button class="chip" data-sr-horizon="10">10y</button>
+      </div>
+      <button class="btn primary" id="btn-sr-run">Estimate</button>
+    </div>
+  </header>
+
+  <p class="muted empty-state" id="sr-empty">Estimating the short-rate dynamics&hellip;</p>
+  <div id="sr-results" hidden>
+    <div class="grid grid-6" id="sr-metrics"></div>
+    <div class="callout" id="sr-insight"></div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Short rate: history and simulated future</h3>
+        <div class="card-tools">
+          <span class="muted">Weekly proxy, 300 simulated paths (5-95% and 25-75% bands), expected paths under both measures.</span>
+          <button class="btn small ghost" id="btn-sr-export" disabled>Export CSV</button>
+        </div>
+      </div>
+      <div class="card-body"><div id="chart-sr-paths" class="chart tall"></div></div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h3>Today's curve vs model</h3><span class="muted">Calibrated with the estimated volatility held fixed</span></div>
+        <div class="card-body"><div id="chart-sr-curve" class="chart"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Term premium by tenor</h3><span class="muted">Observed yield &minus; average expected short rate (physical)</span></div>
+        <div class="card-body"><div id="chart-sr-tp" class="chart"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Reading the two measures</h3></div>
+    <div class="card-body learn">
+      <div class="grid grid-3 tight">
+        <div><b>Physical (P)</b><p class="muted">Estimated from the history of the short rate itself. Says where rates are likely to go. κ is the speed of mean reversion, θ the level rates drift to, σ the size of the shocks.</p></div>
+        <div><b>Risk-neutral (Q)</b><p class="muted">Calibrated to today's curve. Says what the market pays for. The Q long-run mean sits above the P mean when investors demand a term premium for holding duration.</p></div>
+        <div><b>Expectations-only yield</b><p class="muted">The average of the expected short rate under P over the bond's life. Observed yield minus this is a crude, model-based term premium. Compare with the affine estimate on the Term Premium tab.</p></div>
+      </div>
+    </div>
+  </div>
+</section>

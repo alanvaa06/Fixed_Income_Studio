@@ -1,0 +1,70 @@
+<!-- ========================== PARAMETER LAB ============================ -->
+<section class="tab-pane" data-tab-pane="explorer">
+  <header class="page-head">
+    <div>
+      <h2>Parameter Lab</h2>
+      <p class="muted">Move the sliders and watch each factor reshape the curve. Everything here is computed in your browser.</p>
+    </div>
+    <div class="page-actions">
+      <div class="segmented" role="group" aria-label="Model" id="lab-model-switch">
+        <button class="seg-btn active" data-lab-model="nelson-siegel" aria-pressed="true">Nelson-Siegel</button>
+        <button class="seg-btn" data-lab-model="svensson" aria-pressed="false">Svensson</button>
+      </div>
+      <div class="chips" role="group" aria-label="Presets">
+        <button class="chip" data-preset="normal">Normal</button>
+        <button class="chip" data-preset="inverted">Inverted</button>
+        <button class="chip" data-preset="humped">Humped</button>
+        <button class="chip" data-preset="flat">Flat</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid grid-4" id="lab-readout"></div>
+
+  <div class="grid grid-2-1">
+    <div class="card">
+      <div class="card-head">
+        <h3>Live curve</h3>
+        <label class="toggle"><input type="checkbox" id="lab-show-forward" /> Show forward curve</label>
+      </div>
+      <div class="card-body">
+        <div id="chart-explorer" class="chart tall"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Controls</h3><button class="btn small ghost" id="btn-lab-from-fit" title="Copy the last fitted parameters into the sliders">Use last fit</button></div>
+      <div class="card-body sliders">
+        <label>
+          <div class="row between"><span>&beta;<sub>0</sub> &middot; Level (%)</span><span class="mono" id="lbl-b0">3.50</span></div>
+          <input type="range" id="sl-b0" min="-2" max="12" step="0.05" value="3.5" />
+        </label>
+        <label>
+          <div class="row between"><span>&beta;<sub>1</sub> &middot; Slope (%)</span><span class="mono" id="lbl-b1">-1.50</span></div>
+          <input type="range" id="sl-b1" min="-6" max="6" step="0.05" value="-1.5" />
+        </label>
+        <label>
+          <div class="row between"><span>&beta;<sub>2</sub> &middot; Curvature (%)</span><span class="mono" id="lbl-b2">0.00</span></div>
+          <input type="range" id="sl-b2" min="-8" max="8" step="0.05" value="0" />
+        </label>
+        <label>
+          <div class="row between"><span>&tau; &middot; Decay (yrs)</span><span class="mono" id="lbl-tau">2.00</span></div>
+          <input type="range" id="sl-tau" min="0.1" max="10" step="0.05" value="2" />
+        </label>
+        <div id="svensson-sliders" class="sliders" hidden>
+          <label>
+            <div class="row between"><span>&beta;<sub>3</sub> &middot; Curvature 2 (%)</span><span class="mono" id="lbl-b3">0.00</span></div>
+            <input type="range" id="sl-b3" min="-8" max="8" step="0.05" value="0" />
+          </label>
+          <label>
+            <div class="row between"><span>&tau;<sub>2</sub> &middot; Decay 2 (yrs)</span><span class="mono" id="lbl-tau2">8.00</span></div>
+            <input type="range" id="sl-tau2" min="0.1" max="20" step="0.05" value="8" />
+          </label>
+        </div>
+        <div class="formula" id="lab-formula">
+          <code>y(t) = &beta;<sub>0</sub> + &beta;<sub>1</sub>&middot;f<sub>1</sub>(t,&tau;) + &beta;<sub>2</sub>&middot;f<sub>2</sub>(t,&tau;)</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

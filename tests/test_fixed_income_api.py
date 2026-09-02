@@ -164,13 +164,13 @@ def test_term_premium_endpoint(client):
     assert r.status_code == 200
     j = r.get_json()
     assert j["source"] == "gsw" and j["maturities"] == [2.0, 10.0]
-    assert set(j["term_premium"]) == {"dates", "2.0", "10.0"}
-    assert set(j["latest_term_premium"]) == {"2.0", "10.0"}
-    d = j["decomposition"]["10.0"]
+    assert set(j["term_premium"]) == {"dates", "2", "10"}
+    assert set(j["latest_term_premium"]) == {"2", "10"}
+    d = j["decomposition"]["10"]
     assert set(d) >= {"dates", "observed", "fitted", "risk_neutral", "expected_short_rate", "term_premium", "convexity"}
     assert len(d["dates"]) == len(d["term_premium"]) == j["summary"]["n_obs"]
-    assert j["dns"] is not None and set(j["dns"]["term_premium"]) == {"2.0", "10.0"}
-    assert "10.0" in j["regressions"]["campbell_shiller"]
+    assert j["dns"] is not None and set(j["dns"]["term_premium"]) == {"2", "10"}
+    assert "10" in j["regressions"]["campbell_shiller"]
     assert j["summary"]["explained_variance"][0] > 0.5
     t = client.get("/api/term-premium?source=treasury&start=2019-01-01&maturities=5&factors=2&dns_method=ar")
     assert t.status_code == 200 and t.get_json()["summary"]["n_factors"] == 2

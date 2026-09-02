@@ -111,9 +111,20 @@ def _dates(index: Any) -> List[str]:
     return [pd.Timestamp(d).strftime("%Y-%m-%d") for d in index]
 
 
+def _mkey(value: Any) -> str:
+    """Stable JSON key for a maturity: 2.0 -> "2", 0.25 -> "0.25" (matches JS String())."""
+    try:
+        return f"{float(value):g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _frame_pct(frame: pd.DataFrame) -> Dict[str, List[Optional[float]]]:
-    """Columns of a decimal-rate frame as percent lists keyed by column name."""
-    return {str(c): _series_pct(frame[c].to_numpy()) for c in frame.columns}
+    """Columns of a decimal-rate frame as percent lists keyed by column name (maturities via _mkey)."""
+    return {
+        (_mkey(c) if isinstance(c, (int, float)) else str(c)): _series_pct(frame[c].to_numpy())
+        for c in frame.columns
+    }
 
 
 def _factors_in_percent(factors: Dict[str, float]) -> Dict[str, float]:
@@ -138,6 +149,8 @@ def create_app(
         template_folder="templates",
         static_folder="static",
     )
+    # Keep dict order in responses (maturity/columns order matters to the UI).
+    app.json.sort_keys = False
 
     def _cache_key(
         bond_type: str, start_date: Optional[str], end_date: Optional[str], model_id: str
@@ -228,10 +241,13 @@ def create_app(
         plotly_src = (
             "/static/vendor/plotly.min.js" if app.config["PLOTLY_LOCAL_PATH"] else PLOTLY_CDN_URL
         )
+        from .. import __version__
+
         return render_template(
             "index.html",
             fred_key_present=app.config["FRED_KEY_PRESENT"],
             plotly_src=plotly_src,
+            version=__version__,
         )
 
     @app.get("/static/vendor/plotly.min.js")
@@ -864,7 +880,7 @@ def create_app(
             )
             decomposition = {}
             for m, frame in r["decomposition"].items():
-                decomposition[str(m)] = {"dates": _dates(frame.index), **_frame_pct(frame)}
+                decomposition[_mkey(m)] = {"dates": _dates(frame.index), **_frame_pct(frame)}
             dns_block = None
             if r["dns"] is not None:
                 d = r["dns"]
@@ -876,7 +892,10 @@ def create_app(
                     "summary": r["dns_summary"],
                 }
             tp = r["term_premium"]
-            latest = {str(m): float(tp[m].iloc[-1]) * 100.0 for m in tp.columns}
+            latest = {_mkey(m): float(tp[m].iloc[-1]) * 100.0 for m in tp.columns}
+            regressions = {
+                name: {_mkey(m): vals for m, vals in table.items()} for name, table in r["regressions"].items()
+            }
             return {
                 "source": r["source"],
                 "maturities": r["maturities"],
@@ -885,7 +904,7 @@ def create_app(
                 "latest_term_premium": latest,
                 "decomposition": decomposition,
                 "dns": dns_block,
-                "regressions": r["regressions"],
+                "regressions": regressions,
                 **_source_info(),
             }
 
@@ -974,6 +993,7 @@ def create_app(
                     **{c: [_json_float(v) for v in ch[c]] for c in ch.columns if c.startswith("chg_")},
                 },
                 "pca": None if pca is None else {
+                    "components": [str(c) for c in pca["loadings"].columns],
                     "explained_variance": pca["explained_variance"],
                     "maturities": [float(m) for m in pca["loadings"].index],
                     "loadings": {str(c): [float(v) for v in pca["loadings"][c]] for c in pca["loadings"].columns},
