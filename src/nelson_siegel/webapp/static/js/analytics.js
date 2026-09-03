@@ -18,7 +18,10 @@
     ].filter((t) => !t.includes(">—<") || true);
     $("#an-metrics").innerHTML = tiles.join("");
     const src = j.sources && j.sources[j.bond_type];
-    $("#an-source-note").textContent = `${j.model_name || j.model} on ${j.bond_type === "tips" ? "TIPS" : "Treasury"} quotes as of ${j.as_of}${src ? " · " + src : ""}`;
+    const bond = j.bond_type === "tips" ? "TIPS" : "Treasury";
+    $("#an-source-note").textContent =
+      `${j.model_name || j.model} fitted to ${bond} quotes as of ${j.as_of}${src ? " · " + src : ""}` +
+      " · spreads, carry, forwards and rich/cheap come from the fit; the moves table is observed quotes";
   }
 
   function renderChanges(j) {
@@ -33,7 +36,18 @@
       { key: "yield", label: "Yield", fmt: (v) => S.fmtPct(v, 3), align: "num" },
       ...LOOKBACKS.map(([k, label]) => ({ key: k, label, fmt: (v) => S.signed(v, 0), align: "num", cls: (v) => S.heatClass(v, label === "1D" ? 10 : label === "1Y" ? 100 : 30) })),
     ], rows);
-    const traces = [{ x: ch.maturities, y: ch.yield, name: `Today (${ch.as_of})`, mode: "lines+markers", line: { color: COLOR.fitted, width: 3 } }];
+    const traces = [{
+      x: ch.maturities, y: ch.yield, name: `Today (${ch.as_of})`, mode: "markers",
+      marker: { color: COLOR.obs, size: 9, line: { color: COLOR.paper, width: 1 } },
+      hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Observed today</extra>",
+    }];
+    if (j.smooth && j.smooth.maturities) {
+      traces.push({
+        x: j.smooth.maturities, y: j.smooth.yields, name: `${j.model_name || j.model} fit`, mode: "lines",
+        line: { color: COLOR.fitted, width: 3, shape: "spline" },
+        hovertemplate: "%{x:.2f}y · <b>%{y:.3f}%</b><extra>Model fit</extra>",
+      });
+    }
     [["chg_21_bps", "1M ago", COLOR.treasury], ["chg_252_bps", "1Y ago", COLOR.purple]].forEach(([k, name, color]) => {
       if (!ch[k] || ch[k].every((v) => v == null)) return;
       traces.push({ x: ch.maturities, y: ch.yield.map((y, i) => (ch[k][i] == null ? null : y - ch[k][i] / 100)), name, mode: "lines", line: { color, width: 1.5, dash: "dot" } });
