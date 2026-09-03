@@ -18,7 +18,10 @@
     ].filter((t) => !t.includes(">—<") || true);
     $("#an-metrics").innerHTML = tiles.join("");
     const src = j.sources && j.sources[j.bond_type];
-    $("#an-source-note").textContent = `${j.model_name || j.model} on ${j.bond_type === "tips" ? "TIPS" : "Treasury"} quotes as of ${j.as_of}${src ? " · " + src : ""}`;
+    const bond = j.bond_type === "tips" ? "TIPS" : "Treasury";
+    $("#an-source-note").textContent =
+      `${j.model_name || j.model} fitted to ${bond} quotes as of ${j.as_of}${src ? " · " + src : ""}` +
+      " · spreads, carry, forwards and rich/cheap come from the fit; the moves table is observed quotes";
   }
 
   function renderChanges(j) {
