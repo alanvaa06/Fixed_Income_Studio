@@ -192,6 +192,14 @@ def test_analytics_endpoint(client):
     assert j["rich_cheap"][0]["rank"] == 1 and j["changes"]["maturities"]
     assert len(j["pca"]["explained_variance"]) == 3 and set(j["pca"]["loadings"]) == {"Level", "Slope", "Curvature"}
     assert j["family"] == "parametric" and "Tau" in j["factors"]
+    # The curve chart overlays the fitted model on the observed quotes, so the payload
+    # carries a dense grid that must move with the model while the observed row does not.
+    sm = j["smooth"]
+    assert len(sm["maturities"]) == len(sm["yields"]) == 200
+    assert sm["maturities"][0] >= 0.05 and sm["maturities"][-1] == max(j["maturities"])
+    sv = client.get("/api/analytics?bond_type=treasury&model=svensson&horizon=1&lookback=200").get_json()
+    assert sv["smooth"]["yields"] != sm["yields"]
+    assert sv["changes"]["yield"] == j["changes"]["yield"]
     tips = client.get("/api/analytics?bond_type=tips&model=vasicek")
     assert tips.status_code == 200 and tips.get_json()["family"] == "short-rate"
     for bad in ("bond_type=gilts", "model=none", "horizon=50", "lookback=5"):

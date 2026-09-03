@@ -5,7 +5,8 @@
       "name": "Nelson-Siegel Studio (Flask)",
       "runtimeExecutable": "python",
       "runtimeArgs": ["scripts/run_webapp.py", "--no-browser"],
-      "port": 5000
+      "port": 5000,
+      "autoPort": true
     },
     {
       "name": "Jupyter Lab",

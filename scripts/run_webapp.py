@@ -37,7 +37,7 @@ from nelson_siegel.webapp import create_app  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the Nelson-Siegel Studio web UI.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=5000, help="Port (default: 5000)")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5000)), help="Port (default: PORT env var, else 5000)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode with auto-reload")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser tab on startup")
     parser.add_argument(

@@ -956,6 +956,8 @@ def create_app(
             ch = r["changes"]
             sh = r["spread_history"]
             pca = r["pca"]
+            mats = np.asarray(r["maturities"], dtype=float)
+            smooth_x = _smooth_grid(mats.min(), mats.max())
             return {
                 "bond_type": bond_type,
                 "model": r["model"],
@@ -1003,6 +1005,10 @@ def create_app(
                     "maturities": [float(m) for m in ch.index],
                     "yield": _to_pct(ch["yield"].to_numpy()),
                     **{c: [_json_float(v) for v in ch[c]] for c in ch.columns if c.startswith("chg_")},
+                },
+                "smooth": {
+                    "maturities": smooth_x.tolist(),
+                    "yields": _to_pct(r["curve"].predict(smooth_x)),
                 },
                 "pca": None if pca is None else {
                     "components": [str(c) for c in pca["loadings"].columns],
